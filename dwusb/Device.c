@@ -1526,6 +1526,16 @@ Controller_UcxEvtQueryUsbCapability(
 		status = STATUS_NOT_SUPPORTED;
 	}
 	else if (RtlCompareMemory(CapabilityType,
+		&GUID_USB_CAPABILITY_DEVICE_CONNECTION_HIGH_SPEED_COMPATIBLE,
+		sizeof(GUID)) == sizeof(GUID)) {
+		status = STATUS_SUCCESS;
+	}
+	else if (RtlCompareMemory(CapabilityType,
+		&GUID_USB_CAPABILITY_DEVICE_CONNECTION_SUPER_SPEED_COMPATIBLE,
+		sizeof(GUID)) == sizeof(GUID)) {
+		status = STATUS_NOT_SUPPORTED;
+	}
+	else if (RtlCompareMemory(CapabilityType,
 		&GUID_USB_CAPABILITY_CLEAR_TT_BUFFER_ON_ASYNC_TRANSFER_CANCEL,
 		sizeof(GUID)) == sizeof(GUID)) {
 

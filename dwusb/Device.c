@@ -17,8 +17,9 @@ Environment:
 #include "driver.h"
 #include "device.tmh"
 
-#define DWUSB_BASE 0x3F980000
-#define DWUSB_INT 0x29
+// FIXME don't hardcode these! use resources!
+//#define DWUSB_BASE 0x3F980000
+//#define DWUSB_INT 0x29
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text (PAGE, dwusbCreateDevice)
@@ -1293,8 +1294,9 @@ RootHubCreate(
 	WDF_OBJECT_ATTRIBUTES   wdfAttributes;
 	UCXROOTHUB              ucxRootHub;
 	PROOTHUB_DATA           rootHubData;
+	PDEVICE_CONTEXT			ctx;
 
-	UNREFERENCED_PARAMETER(WdfDevice);
+	ctx = DeviceGetContext(WdfDevice);
 
 	KdPrint((__FUNCTION__ "\n"));
 
@@ -1333,38 +1335,49 @@ RootHubCreate(
 		rootHubData->ExTimerResetComplete = ExAllocateTimer(RootHub_ResetComplete, rootHubData, EX_TIMER_HIGH_RESOLUTION);
 		rootHubData->ExTimerResumeComplete = ExAllocateTimer(RootHub_ResumeComplete, rootHubData, EX_TIMER_HIGH_RESOLUTION);
 		rootHubData->ExTimerResetSafeComplete = ExAllocateTimer(RootHub_ResetSafeComplete, rootHubData, EX_TIMER_HIGH_RESOLUTION);
+	}
 
-		LARGE_INTEGER coreBase;
-		coreBase.QuadPart = DWUSB_BASE + 0x0;
+	return status;
+}
 
-		LARGE_INTEGER hostBase;
-		hostBase.QuadPart = DWUSB_BASE + 0x400;
+NTSTATUS
+RootHubInit(
+	UCXCONTROLLER UcxController
+)
+{
+	PCONTROLLER_DATA controllerData = ControllerGetData(UcxController);
+	PDEVICE_CONTEXT ctx = DeviceGetContext(controllerData->WdfDevice);
+	PROOTHUB_DATA rootHubData = RootHubGetData(controllerData->RootHub);
+	LARGE_INTEGER coreBase;
+	coreBase.QuadPart = ctx->MemoryBase.QuadPart + 0x0;
 
-		LARGE_INTEGER hprt0Base;
-		hprt0Base.QuadPart = DWUSB_BASE + 0x440;
+	LARGE_INTEGER hostBase;
+	hostBase.QuadPart = ctx->MemoryBase.QuadPart + 0x400;
 
-		rootHubData->CoreGlobalRegs = MmMapIoSpace(coreBase, sizeof(dwc_otg_core_global_regs_t), MmNonCached);
-		rootHubData->HostGlobalRegs = MmMapIoSpace(hostBase, sizeof(dwc_otg_host_global_regs_t), MmNonCached);
-		rootHubData->Hprt0 = MmMapIoSpace(hprt0Base, sizeof(uint32_t), MmNonCached);
+	LARGE_INTEGER hprt0Base;
+	hprt0Base.QuadPart = ctx->MemoryBase.QuadPart + 0x440;
 
-		hprt0_data_t hprt0;
-		hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
+	rootHubData->CoreGlobalRegs = MmMapIoSpace(coreBase, sizeof(dwc_otg_core_global_regs_t), MmNonCached);
+	rootHubData->HostGlobalRegs = MmMapIoSpace(hostBase, sizeof(dwc_otg_host_global_regs_t), MmNonCached);
+	rootHubData->Hprt0 = MmMapIoSpace(hprt0Base, sizeof(uint32_t), MmNonCached);
+
+	hprt0_data_t hprt0;
+	hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
+
+	KeMemoryBarrier();
+	_DataSynchronizationBarrier();
+
+	if (hprt0.b.prtpwr == 0)
+	{
+		hprt0.b.prtpwr = 1;
 
 		KeMemoryBarrier();
 		_DataSynchronizationBarrier();
 
-		if (hprt0.b.prtpwr == 0)
-		{
-			hprt0.b.prtpwr = 1;
-
-			KeMemoryBarrier();
-			_DataSynchronizationBarrier();
-
-			*rootHubData->Hprt0 = hprt0.d32;
-		}
+		*rootHubData->Hprt0 = hprt0.d32;
 	}
 
-	return status;
+	return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -1403,11 +1416,10 @@ Controller_UcxEvtGetCurrentFrameNumber(
 }
 
 VOID
-Controller_UcxEvtReset(
+Controller_Reset(
 	UCXCONTROLLER   UcxController
 )
 {
-	UCX_CONTROLLER_RESET_COMPLETE_INFO  ucxControllerResetCompleteInfo;
 	PCONTROLLER_DATA    controllerData;
 	grstctl_t grst;
 
@@ -1416,10 +1428,12 @@ Controller_UcxEvtReset(
 	controllerData = ControllerGetData(UcxController);
 
 	// wait for AHBIDLE
-	unsigned int delay = 0x2000;
+	LARGE_INTEGER delay;
+	delay.QuadPart = 100; // times 100 nanoseconds == 10 us
 
-	while (delay > 0)
+	for (unsigned int i = 0; i < 100000; i++)
 	{
+		KeDelayExecutionThread(KernelMode, FALSE, &delay);
 		KeMemoryBarrier();
 
 		grst.d32 = controllerData->CoreGlobalRegs->grstctl;
@@ -1428,20 +1442,18 @@ Controller_UcxEvtReset(
 		{
 			break;
 		}
-
-		delay--;
 	}
 
 	// set CSFTRST
-	delay = 0x2000;
 
 	grst.b.csftrst = 1;
 	controllerData->CoreGlobalRegs->grstctl = grst.d32;
 
 	KeMemoryBarrier();
 
-	while (delay > 0)
+	for (unsigned int i = 0; i < 10000; i++)
 	{
+		KeDelayExecutionThread(KernelMode, FALSE, &delay);
 		KeMemoryBarrier();
 
 		grst.d32 = controllerData->CoreGlobalRegs->grstctl;
@@ -1450,9 +1462,17 @@ Controller_UcxEvtReset(
 		{
 			break;
 		}
-
-		delay--;
 	}
+}
+
+VOID
+Controller_UcxEvtReset(
+	UCXCONTROLLER   UcxController
+)
+{
+	UCX_CONTROLLER_RESET_COMPLETE_INFO  ucxControllerResetCompleteInfo;
+
+	Controller_Reset(UcxController);
 
 	UCX_CONTROLLER_RESET_COMPLETE_INFO_INIT(&ucxControllerResetCompleteInfo,
 		UcxControllerStateLost,
@@ -1539,12 +1559,24 @@ BOOLEAN OnInterruptIsr(WDFINTERRUPT WdfInterrupt, ULONG MessageID)
 		KeMemoryBarrier();
 		_DataSynchronizationBarrier();
 
-		WdfInterruptQueueDpcForIsr(WdfInterrupt);
+		WdfInterruptQueueWorkItemForIsr(WdfInterrupt);
 		return TRUE;
 	}
-	else if (gintsts.b.portintr)
+	else if (gintsts.b.portintr || gintsts.b.disconnect)
 	{
-		WdfInterruptQueueDpcForIsr(WdfInterrupt);
+		WdfInterruptQueueWorkItemForIsr(WdfInterrupt);
+		return TRUE;
+	}
+	else if (gintsts.b.rxstsqlvl)
+	{
+		//TODO
+		KdPrint(("rxstsqlvl\n"));
+		return TRUE;
+	}
+	else if (gintsts.b.sessreqintr)
+	{
+		//TODO
+		KdPrint(("sessreqintr\n"));
 		return TRUE;
 	}
 
@@ -1552,7 +1584,7 @@ BOOLEAN OnInterruptIsr(WDFINTERRUPT WdfInterrupt, ULONG MessageID)
 }
 
 _Use_decl_annotations_
-VOID OnInterruptDpc(WDFINTERRUPT WdfInterrupt, WDFOBJECT WdfDevice)
+VOID OnInterruptWorkItem(WDFINTERRUPT WdfInterrupt, WDFOBJECT WdfDevice)
 {
 	UNREFERENCED_PARAMETER(WdfDevice);
 
@@ -1586,7 +1618,7 @@ VOID OnInterruptDpc(WDFINTERRUPT WdfInterrupt, WDFOBJECT WdfDevice)
 			}
 		}
 	}
-	else if (gintsts.b.portintr)
+	else if (gintsts.b.portintr || gintsts.b.disconnect)
 	{
 		UcxRootHubPortChanged(context->ControllerHandle->RootHub);
 	}
@@ -1664,6 +1696,8 @@ ControllerCreate(
 	ucxControllerConfig.EvtControllerGetCurrentFrameNumber = Controller_UcxEvtGetCurrentFrameNumber;
 	ucxControllerConfig.EvtControllerReset = Controller_UcxEvtReset;
 	ucxControllerConfig.EvtControllerQueryUsbCapability = Controller_UcxEvtQueryUsbCapability;
+	ucxControllerConfig.ParentBusType = UcxControllerParentBusTypeAcpi;
+	UCX_CONTROLLER_CONFIG_SET_ACPI_INFO(&ucxControllerConfig, "BCM", "2848", "0");
 
 	status = UcxControllerCreate(WdfDevice,
 		&ucxControllerConfig,
@@ -1679,131 +1713,25 @@ ControllerCreate(
 	controllerData->UsbAddressInit = 0;
 	controllerData->ChannelMask = 0;
 
+	PDEVICE_CONTEXT ctx = DeviceGetContext(WdfDevice);
+
 	for (int i = 0; i < 8; i++)
 	{
 		controllerData->ChResumeTimers[i] = ExAllocateTimer(Controller_ResumeCh, &controllerData->ChResumeContexts[i], EX_TIMER_HIGH_RESOLUTION);
 	}
 
 	LARGE_INTEGER coreBase;
-	coreBase.QuadPart = DWUSB_BASE + 0x0;
+	coreBase.QuadPart = ctx->MemoryBase.QuadPart + 0x0;
 
 	LARGE_INTEGER hostBase;
-	hostBase.QuadPart = DWUSB_BASE + 0x400;
+	hostBase.QuadPart = ctx->MemoryBase.QuadPart + 0x400;
 
 	LARGE_INTEGER pcgcBase;
-	pcgcBase.QuadPart = DWUSB_BASE + 0xE00;
+	pcgcBase.QuadPart = ctx->MemoryBase.QuadPart + 0xE00;
 
 	controllerData->CoreGlobalRegs = MmMapIoSpace(coreBase, sizeof(dwc_otg_core_global_regs_t), MmNonCached);
 	controllerData->HostGlobalRegs = MmMapIoSpace(hostBase, sizeof(dwc_otg_host_global_regs_t), MmNonCached);
 	controllerData->PcgcCtl = MmMapIoSpace(pcgcBase, sizeof(uint32_t), MmNonCached);
-
-	gusbcfg_data_t gusbcfg;
-	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
-
-	gusbcfg.b.ulpi_ext_vbus_drv = 0;// 1;
-	gusbcfg.b.term_sel_dl_pulse = 0;
-
-	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
-
-	_DataSynchronizationBarrier();
-	KeMemoryBarrier();
-
-	grstctl_t grst;
-	grst.d32 = controllerData->CoreGlobalRegs->grstctl;
-	int delay = 0x2000;
-
-	grst.b.csftrst = 1;
-	controllerData->CoreGlobalRegs->grstctl = grst.d32;
-
-	KeMemoryBarrier();
-
-	while (delay > 0)
-	{
-		KeMemoryBarrier();
-
-		grst.d32 = controllerData->CoreGlobalRegs->grstctl;
-
-		if (!grst.b.csftrst)
-		{
-			break;
-		}
-
-		delay--;
-	}
-
-	// set PHY config
-	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
-
-	gusbcfg.b.ddrsel = 0;
-	gusbcfg.b.ulpi_utmi_sel = 1;
-	gusbcfg.b.phyif = 0;
-
-	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
-
-	_DataSynchronizationBarrier();
-	KeMemoryBarrier();
-
-	// reset, again
-	delay = 0x2000;
-
-	grst.d32 = controllerData->CoreGlobalRegs->grstctl;
-	grst.b.csftrst = 1;
-	controllerData->CoreGlobalRegs->grstctl = grst.d32;
-
-	KeMemoryBarrier();
-
-	while (delay > 0)
-	{
-		KeMemoryBarrier();
-
-		grst.d32 = controllerData->CoreGlobalRegs->grstctl;
-
-		if (!grst.b.csftrst)
-		{
-			break;
-		}
-
-		delay--;
-	}
-
-	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
-
-	gusbcfg.b.hnpcap = 1;
-	gusbcfg.b.srpcap = 1;
-
-	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
-
-	*controllerData->PcgcCtl = 0;
-	KeMemoryBarrier();
-
-	gahbcfg_data_t gahbcfg;
-	gahbcfg.d32 = 0;
-
-	gahbcfg.b.glblintrmsk = 1;
-	gahbcfg.b.dmaenable = 1;
-	gahbcfg.b.hburstlen = (1 << 3) | (0 << 0);//DWC_GAHBCFG_INT_DMA_BURST_INCR4;
-
-	controllerData->CoreGlobalRegs->gahbcfg = gahbcfg.d32;
-
-	hcfg_data_t hcfg;
-	hcfg.d32 = controllerData->HostGlobalRegs->hcfg;
-	hcfg.b.fslspclksel = DWC_HCFG_30_60_MHZ;
-	controllerData->HostGlobalRegs->hcfg = hcfg.d32;
-
-	gotgctl_data_t gotgctl;
-	gotgctl.d32 = controllerData->CoreGlobalRegs->gotgctl;
-
-	gotgctl.b.hstsethnpen = 1;// 0;
-
-	controllerData->CoreGlobalRegs->gotgctl = gotgctl.d32;
-
-	gintmsk_data_t gintmsk;
-	gintmsk.d32 = 0;
-	gintmsk.b.hcintr = 1;
-	//gintmsk.b.portintr = 1;
-	controllerData->CoreGlobalRegs->gintmsk = gintmsk.d32;
-
-	controllerData->HostGlobalRegs->haintmsk = 0x1;
 
 	for (int i = 0; i < 16; i++)
 	{
@@ -1813,40 +1741,7 @@ ControllerCreate(
 
 	*Controller = ucxController;
 
-	WDF_OBJECT_ATTRIBUTES interruptObjectAttributes;
-	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(
-		&interruptObjectAttributes,
-		INTERRUPT_CONTEXT);
-
-	WDF_INTERRUPT_CONFIG interruptConfig;
-	WDF_INTERRUPT_CONFIG_INIT(
-		&interruptConfig,
-		OnInterruptIsr,
-		OnInterruptDpc);
-
-	interruptConfig.AutomaticSerialization = TRUE;
-
-	status = WdfInterruptCreate(
-		WdfDevice,
-		&interruptConfig,
-		&interruptObjectAttributes,
-		&controllerData->WdfInterrupt);
-
-	if (!NT_SUCCESS(status))
-	{
-		return status;
-	}
-
-	HANDLE threadHandle;
-
-	status = PsCreateSystemThread(&threadHandle, SYNCHRONIZE, NULL, NULL, NULL, DeviceSystemThread, controllerData);
-
-	if (!NT_SUCCESS(status))
-	{
-		return status;
-	}
-
-	ZwClose(threadHandle);
+	controllerData->WdfInterrupt = ctx->Interrupt;
 
 	WDF_DMA_ENABLER_CONFIG   dmaConfig;
 
@@ -1918,6 +1813,290 @@ ControllerCreate(
 	return STATUS_SUCCESS;
 }
 
+/**
+* This function calculates the number of IN EPS
+* using GHWCFG1 and GHWCFG2 registers values
+*
+* @param core_if Programming view of the DWC_otg controller
+*/
+static uint32_t calc_num_in_eps(PCONTROLLER_DATA core_if)
+{
+	uint32_t num_in_eps = 0;
+	uint32_t num_eps = core_if->hwcfg2.b.num_dev_ep;
+	uint32_t hwcfg1 = core_if->hwcfg1.d32 >> 3;
+	uint32_t num_tx_fifos = core_if->hwcfg4.b.num_in_eps;
+	unsigned int i;
+
+	for (i = 0; i < num_eps; ++i) {
+		if (!(hwcfg1 & 0x1))
+			num_in_eps++;
+
+		hwcfg1 >>= 2;
+	}
+
+	if (core_if->hwcfg4.b.ded_fifo_en) {
+		num_in_eps =
+			(num_in_eps > num_tx_fifos) ? num_tx_fifos : num_in_eps;
+	}
+
+	return num_in_eps;
+}
+
+/**
+* This function calculates the number of OUT EPS
+* using GHWCFG1 and GHWCFG2 registers values
+*
+* @param core_if Programming view of the DWC_otg controller
+*/
+static uint32_t calc_num_out_eps(PCONTROLLER_DATA core_if)
+{
+	uint32_t num_out_eps = 0;
+	uint32_t num_eps = core_if->hwcfg2.b.num_dev_ep;
+	uint32_t hwcfg1 = core_if->hwcfg1.d32 >> 2;
+	unsigned int i;
+
+	for (i = 0; i < num_eps; ++i) {
+		if (!(hwcfg1 & 0x1))
+			num_out_eps++;
+
+		hwcfg1 >>= 2;
+	}
+	return num_out_eps;
+}
+
+NTSTATUS
+ControllerInit(
+	UCXCONTROLLER ucxController
+)
+{
+	PCONTROLLER_DATA controllerData = ControllerGetData(ucxController);
+	NTSTATUS status = STATUS_SUCCESS;
+
+	controllerData->hwcfg1.d32 = controllerData->CoreGlobalRegs->ghwcfg1;
+	controllerData->hwcfg2.d32 = controllerData->CoreGlobalRegs->ghwcfg2;
+	controllerData->hwcfg3.d32 = controllerData->CoreGlobalRegs->ghwcfg3;
+	controllerData->hwcfg4.d32 = controllerData->CoreGlobalRegs->ghwcfg4;
+	controllerData->hptxfsiz.d32 = controllerData->CoreGlobalRegs->hptxfsiz;
+
+	gusbcfg_data_t gusbcfg;
+	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
+
+	gusbcfg.b.ulpi_ext_vbus_drv = 0;// 1;
+	gusbcfg.b.term_sel_dl_pulse = 0;
+
+	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
+
+	_DataSynchronizationBarrier();
+	KeMemoryBarrier();
+
+	Controller_Reset(ucxController);
+
+	// set PHY config
+	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
+
+	gusbcfg.b.ddrsel = 0;
+	gusbcfg.b.ulpi_utmi_sel = 1;
+	gusbcfg.b.phyif = 0;
+
+	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
+
+	_DataSynchronizationBarrier();
+	KeMemoryBarrier();
+
+	// reset, again
+	Controller_Reset(ucxController);
+
+	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
+
+	gusbcfg.b.ulpi_fsls = 0;
+	gusbcfg.b.ulpi_clk_sus_m = 0;
+	gusbcfg.b.hnpcap = 1;
+	gusbcfg.b.srpcap = 1;
+
+	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
+
+	*controllerData->PcgcCtl = 0;
+	KeMemoryBarrier();
+
+	gahbcfg_data_t gahbcfg;
+	gahbcfg.d32 = 0;
+
+	switch (controllerData->hwcfg2.b.architecture) {
+
+	case DWC_SLAVE_ONLY_ARCH:
+		return STATUS_NOT_SUPPORTED;
+	case DWC_EXT_DMA_ARCH:
+		//DWC_DEBUGPL(DBG_CIL, "External DMA Mode\n");
+		{
+			unsigned char brst_sz = 32;
+			gahbcfg.b.hburstlen = 0;
+			while (brst_sz > 1) {
+				gahbcfg.b.hburstlen++;
+				brst_sz >>= 1;
+			}
+		}
+		break;
+
+	case DWC_INT_DMA_ARCH:
+		//DWC_DEBUGPL(DBG_CIL, "Internal DMA Mode\n");
+		/* Old value was DWC_GAHBCFG_INT_DMA_BURST_INCR - done for
+		Host mode ISOC in issue fix - vahrama */
+		/* Broadcom had altered to (1<<3)|(0<<0) - WRESP=1, max 4 beats */
+		gahbcfg.b.hburstlen = (1 << 3) | (0 << 0);//DWC_GAHBCFG_INT_DMA_BURST_INCR4;
+		break;
+
+	}
+
+	gahbcfg.b.glblintrmsk = 1;
+	gahbcfg.b.dmaenable = 1;
+
+	controllerData->CoreGlobalRegs->gahbcfg = gahbcfg.d32;
+
+	hcfg_data_t hcfg;
+	hcfg.d32 = controllerData->HostGlobalRegs->hcfg;
+	hcfg.b.fslspclksel = DWC_HCFG_30_60_MHZ;
+	controllerData->HostGlobalRegs->hcfg = hcfg.d32;
+
+	gotgctl_data_t gotgctl;
+	gotgctl.d32 = controllerData->CoreGlobalRegs->gotgctl;
+
+	gotgctl.b.hstsethnpen = 1;// 0;
+
+	controllerData->CoreGlobalRegs->gotgctl = gotgctl.d32;
+
+	controllerData->CoreGlobalRegs->gotgint = 0xFFFFFFFF;
+	controllerData->CoreGlobalRegs->gintsts = 0xFFFFFFFF;
+
+
+	gintmsk_data_t gintmsk;
+	gintmsk.d32 = 0;
+	//gintmsk.b.modemismatch = 1; // OTG modeswitching related; we only support host mode
+	//gintmsk.b.otgintr = 1; // also OTG modeswitching
+	gintmsk.b.rxstsqlvl = 1;
+	//gintmsk.b.conidstschng = 1; // also OTG modeswitching
+	//gintmsk.b.wkupintr = 1; // for now, as we don't support any low-power modes or wake-on-USB
+	//gintmsk.b.usbsuspend = 1; // ditto
+	gintmsk.b.sessreqintr = 1;
+	gintmsk.b.disconnect = 1; // "Disconnect from root port" - do we need this? can this ever happen on the Pi?
+	gintmsk.b.hcintr = 1;
+	gintmsk.b.portintr = 1;
+	controllerData->CoreGlobalRegs->gintmsk = gintmsk.d32;
+
+	controllerData->HostGlobalRegs->haintmsk = 0x1;
+
+	HANDLE threadHandle;
+
+	status = PsCreateSystemThread(&threadHandle, SYNCHRONIZE, NULL, NULL, NULL, DeviceSystemThread, controllerData);
+
+	if (!NT_SUCCESS(status))
+	{
+		return status;
+	}
+
+	ZwClose(threadHandle);
+
+	return status;
+}
+
+NTSTATUS
+dwusbProbeResources(
+	PDEVICE_CONTEXT ctx,
+	WDFCMRESLIST res,
+	WDFCMRESLIST rawres
+)
+{
+	NTSTATUS status = STATUS_SUCCESS;
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR  desc;
+	WDF_INTERRUPT_CONFIG Config;
+	WDF_OBJECT_ATTRIBUTES interruptObjectAttributes;
+	BOOLEAN HaveInterrupt = FALSE;
+	BOOLEAN HaveMemory = FALSE;
+	for (unsigned int i = 0; i < WdfCmResourceListGetCount(res); i++) {
+		desc = WdfCmResourceListGetDescriptor(res, i);
+		switch (desc->Type) {
+
+		case CmResourceTypeMemory:
+		case CmResourceTypeMemoryLarge:
+			//
+			// Handle memory resources here.
+			//
+			ctx->MemoryBase = desc->u.Memory.Start;
+			HaveMemory = TRUE;
+			break;
+
+		case CmResourceTypeInterrupt:
+			WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(
+				&interruptObjectAttributes,
+				INTERRUPT_CONTEXT);
+			WDF_INTERRUPT_CONFIG_INIT(&Config, OnInterruptIsr, NULL);
+			Config.PassiveHandling = TRUE;
+			Config.AutomaticSerialization = TRUE;
+			Config.EvtInterruptWorkItem = OnInterruptWorkItem;
+			Config.InterruptRaw = WdfCmResourceListGetDescriptor(rawres, i);
+			Config.InterruptTranslated = desc;
+			status = WdfInterruptCreate(ctx->Device, &Config, &interruptObjectAttributes, &ctx->Interrupt);
+			HaveInterrupt = TRUE;
+			if (!NT_SUCCESS(status)) {
+				return status;
+			}
+
+			break;
+		default:
+			//
+			// Ignore all other descriptors.
+			//
+			break;
+		}
+	}
+
+	if (!HaveMemory || !HaveInterrupt) {
+		status = STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	return status;
+}
+
+NTSTATUS
+dwusbDevicePrepareHardware(
+	WDFDEVICE Device,
+	WDFCMRESLIST ResourcesRaw,
+	WDFCMRESLIST ResourcesTranslated
+)
+{
+	NTSTATUS status;
+	PDEVICE_CONTEXT deviceContext = DeviceGetContext(Device);
+	status = dwusbProbeResources(deviceContext, ResourcesTranslated, ResourcesRaw);
+
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
+
+	status = ControllerCreate(Device, &deviceContext->Controller);
+
+	if (NT_SUCCESS(status)) {
+		status = RootHubCreate(Device, deviceContext->Controller);
+	}
+
+	return status;
+}
+
+NTSTATUS
+dwusbDeviceD0Entry(
+	WDFDEVICE Device,
+	WDF_POWER_DEVICE_STATE PreviousState
+)
+{
+	NTSTATUS status;
+	PDEVICE_CONTEXT deviceContext = DeviceGetContext(Device);
+	UNREFERENCED_PARAMETER(PreviousState);
+
+	status = ControllerInit(deviceContext->Controller);
+	if (NT_SUCCESS(status)) {
+		status = RootHubInit(deviceContext->Controller);
+	}
+	return STATUS_SUCCESS;
+}
+
 NTSTATUS
 dwusbCreateDevice(
     _Inout_ PWDFDEVICE_INIT DeviceInit
@@ -1941,6 +2120,7 @@ Return Value:
 --*/
 {
     WDF_OBJECT_ATTRIBUTES deviceAttributes;
+	WDF_PNPPOWER_EVENT_CALLBACKS pnpPowerCallbacks;
     PDEVICE_CONTEXT deviceContext;
     WDFDEVICE device;
     NTSTATUS status;
@@ -1949,24 +2129,40 @@ Return Value:
 
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&deviceAttributes, DEVICE_CONTEXT);
 
+	status = UcxInitializeDeviceInit(DeviceInit);
+
+	WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnpPowerCallbacks);
+	pnpPowerCallbacks.EvtDevicePrepareHardware = dwusbDevicePrepareHardware;
+	//pnpPowerCallbacks.EvtDeviceReleaseHardware = dwusbDeviceReleaseHardware;
+	pnpPowerCallbacks.EvtDeviceD0Entry = dwusbDeviceD0Entry;
+	//pnpPowerCallbacks.EvtDeviceD0Exit = dwusbDeviceD0Exit;
+
+	WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &pnpPowerCallbacks);
+
+	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&deviceAttributes, DEVICE_CONTEXT);
+
     status = WdfDeviceCreate(&DeviceInit, &deviceAttributes, &device);
 
     if (NT_SUCCESS(status)) {
-		WDF_DEVICE_POWER_CAPABILITIES powerCaps;
+		/*WDF_DEVICE_POWER_CAPABILITIES powerCaps;
 		WDF_DEVICE_POWER_CAPABILITIES_INIT(&powerCaps);
 
 		powerCaps.DeviceD1 = WdfFalse;
+		powerCaps.DeviceD2 = WdfFalse;
+		powerCaps.WakeFromD0 = WdfFalse;
 		powerCaps.WakeFromD1 = WdfFalse;
+		powerCaps.WakeFromD2 = WdfFalse;
 		powerCaps.DeviceWake = PowerDeviceD0;
+		powerCaps.SystemWake = PowerSystemWorking;
 
 		powerCaps.DeviceState[PowerSystemWorking] = PowerDeviceD0;
 		powerCaps.DeviceState[PowerSystemSleeping1] = PowerDeviceD0;
 		powerCaps.DeviceState[PowerSystemSleeping2] = PowerDeviceD0;
 		powerCaps.DeviceState[PowerSystemSleeping3] = PowerDeviceD0;
-		powerCaps.DeviceState[PowerSystemHibernate] = PowerDeviceD0;
-		powerCaps.DeviceState[PowerSystemShutdown] = PowerDeviceD0;
+		powerCaps.DeviceState[PowerSystemHibernate] = PowerDeviceD3;
+		powerCaps.DeviceState[PowerSystemShutdown] = PowerDeviceD3;
 
-		WdfDeviceSetPowerCapabilities(device, &powerCaps);
+		WdfDeviceSetPowerCapabilities(device, &powerCaps);*/
 
 
         //
@@ -1983,35 +2179,16 @@ Return Value:
         //
         // Initialize the context.
         //
-        deviceContext->PrivateDeviceData = 0;
-
-        //
-        // Create a device interface so that applications can find and talk
-        // to us.
-        //
-        status = WdfDeviceCreateDeviceInterface(
-            device,
-            &GUID_DEVINTERFACE_dwusb,
-            NULL // ReferenceString
-            );
-
-        if (NT_SUCCESS(status)) {
-            //
-            // Initialize the I/O Package and any Queues
-            //
-            status = dwusbQueueInitialize(device);
-
-			if (NT_SUCCESS(status)) {
-				UCXCONTROLLER controller;
-
-				status = ControllerCreate(device, &controller);
-
-				if (NT_SUCCESS(status)) {
-					status = RootHubCreate(device, controller);
-				}
-			}
-        }
+        deviceContext->Device = device;
     }
+
+
+	/*if (NT_SUCCESS(status)) {
+		//
+		// Initialize the I/O Package and any Queues
+		//
+		status = dwusbQueueInitialize(device);
+	}*/
 
     return status;
 }

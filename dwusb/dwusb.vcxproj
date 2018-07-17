@@ -40,7 +40,9 @@
   <ItemGroup>
     <ClCompile Include="Device.c" />
     <ClCompile Include="Driver.c" />
-    <ClCompile Include="Queue.c" />
+    <ClCompile Include="Queue.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="UsbDevice.c" />
   </ItemGroup>
   <ItemGroup>

@@ -17,8 +17,9 @@ Kernel-mode Driver Framework
 #include "driver.h"
 #include "UsbDevice.tmh"
 
-#define DWUSB_BASE 0x3F980000
-#define DWUSB_INT 0x29
+// FIXME don't hardcode these! use resources!
+//#define DWUSB_BASE 0x3F980000
+//#define DWUSB_INT 0x29
 
 NTSTATUS
 UsbDevice_UcxEvtDeviceAdd(
@@ -2134,10 +2135,15 @@ UsbDevice_UcxEvtDeviceAdd(
 	WDF_OBJECT_ATTRIBUTES           wdfAttributes;
 	UCXUSBDEVICE                    ucxUsbDevice;
 	PUSBDEVICE_DATA                 usbDeviceData;
+	PCONTROLLER_DATA					controllerCtx;
+	PDEVICE_CONTEXT					deviceCtx;
 
 	UNREFERENCED_PARAMETER(UcxController);
 	UNREFERENCED_PARAMETER(UsbDeviceInfo);
 	UNREFERENCED_PARAMETER(UsbDeviceInit);
+
+	controllerCtx = ControllerGetData(UcxController);
+	deviceCtx = DeviceGetContext(controllerCtx->WdfDevice);
 
 	UCX_USBDEVICE_EVENT_CALLBACKS_INIT(&ucxUsbDeviceEventCallbacks,
 		UsbDevice_UcxEvtEndpointsConfigure,
@@ -2171,12 +2177,12 @@ UsbDevice_UcxEvtDeviceAdd(
 		usbDeviceData->UsbDeviceInfo = *UsbDeviceInfo;
 
 		LARGE_INTEGER hostBase;
-		hostBase.QuadPart = DWUSB_BASE + 0x400;
+		hostBase.QuadPart = deviceCtx->MemoryBase.QuadPart + 0x400;
 
 		usbDeviceData->HostGlobalRegs = MmMapIoSpace(hostBase, sizeof(dwc_otg_host_global_regs_t), MmNonCached);
 		
 		LARGE_INTEGER channelBase;
-		channelBase.QuadPart = DWUSB_BASE + DWC_OTG_HOST_CHAN_REGS_OFFSET;
+		channelBase.QuadPart = deviceCtx->MemoryBase.QuadPart + DWC_OTG_HOST_CHAN_REGS_OFFSET;
 
 		for (int i = 0; i < 16; i++)
 		{

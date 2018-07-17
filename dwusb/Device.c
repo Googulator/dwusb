@@ -1445,6 +1445,7 @@ Controller_Reset(
 	}
 
 	// set CSFTRST
+	delay.QuadPart = 10; // times 100 nanoseconds == 1 us
 
 	grst.b.csftrst = 1;
 	controllerData->CoreGlobalRegs->grstctl = grst.d32;

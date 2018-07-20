@@ -93,6 +93,7 @@ typedef struct _CONTROLLER_DATA {
 	UCXROOTHUB RootHub;
 
 	volatile char ChannelMask;
+	WDFSPINLOCK ChannelMaskLock;
 } CONTROLLER_DATA, *PCONTROLLER_DATA;
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(CONTROLLER_DATA, ControllerGetData);

@@ -749,10 +749,10 @@ Return Value:
 
         case PORT_RESET:
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
-			hprt0.b.prtconndet = 0;
-			hprt0.b.prtena = 0;
-			hprt0.b.prtenchng = 0;
-			hprt0.b.prtovrcurrchng = 0;
+			//hprt0.b.prtconndet = 0;
+			//hprt0.b.prtena = 0;
+			//hprt0.b.prtenchng = 0;
+			//hprt0.b.prtovrcurrchng = 0;
 			hprt0.b.prtrst = 1;
 
 			_DataSynchronizationBarrier();
@@ -761,7 +761,7 @@ Return Value:
 
 			rootHubData->ResetState = TRUE;
 
-			//UcxRootHubPortChanged(UcxRootHub);
+			UcxRootHubPortChanged(UcxRootHub);
 
 			//
 			// Software shall ensure that resume is signaled for at
@@ -795,10 +795,11 @@ Return Value:
 
         case PORT_POWER:
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
-			hprt0.b.prtconndet = 0;
-			hprt0.b.prtena = 0;
-			hprt0.b.prtenchng = 0;
+			//hprt0.b.prtconndet = 0;
+			//hprt0.b.prtena = 0;
+			//hprt0.b.prtenchng = 0;
 			hprt0.b.prtovrcurrchng = 0;
+			hprt0.b.prtovrcurract = 0;
 			hprt0.b.prtpwr = 1;
 			WRITE_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0, (ULONG)hprt0.d32);
 
@@ -817,6 +818,7 @@ Return Value:
             break;
 
         default:
+			KdPrint(("Unknown port feature %d\n", featureSelector));
             urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
             status = STATUS_UNSUCCESSFUL;
 			return;
@@ -894,8 +896,9 @@ Return Value:
 			return;
         }
 
-        urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
-        status = STATUS_UNSUCCESSFUL;
+        urb->UrbHeader.Status = USBD_STATUS_SUCCESS;
+        status = STATUS_SUCCESS;
+		*((PUSHORT)urb->UrbControlTransferEx.TransferBuffer) = 0;
 
     } __finally {
 
@@ -956,8 +959,8 @@ Return Value:
         // either treat the SetHubFeature() request as a Request Error
         // or as a functional no-operation."
         //
-        urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
-        status = STATUS_UNSUCCESSFUL;
+        urb->UrbHeader.Status = USBD_STATUS_SUCCESS;
+        status = STATUS_SUCCESS;
 
     } __finally {
 
@@ -1723,6 +1726,10 @@ ControllerCreate(
 	controllerData->WdfDevice = WdfDevice;
 	controllerData->UsbAddressInit = 0;
 	controllerData->ChannelMask = 0;
+	status = WdfSpinLockCreate(WDF_NO_OBJECT_ATTRIBUTES, &controllerData->ChannelMaskLock);
+	if (!NT_SUCCESS(status)) {
+		return status;
+	}
 
 	PDEVICE_CONTEXT ctx = DeviceGetContext(WdfDevice);
 

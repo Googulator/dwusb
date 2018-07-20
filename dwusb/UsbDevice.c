@@ -183,24 +183,34 @@ Controller_AllocateChannel(
 )
 {
 	PCONTROLLER_DATA data = ControllerGetData(UcxController);
+	NTSTATUS status = STATUS_INSUFFICIENT_RESOURCES;
 
 	for (int i = 0; i < 8; i++)
 	{
+		WdfSpinLockAcquire(data->ChannelMaskLock);
 		if (!(data->ChannelMask & (1 << i)))
 		{
 			InterlockedOr8(&data->ChannelMask, 1 << i);
 
 			*Channel = i;
+			status = STATUS_SUCCESS;
+		}
+		WdfSpinLockRelease(data->ChannelMaskLock);
 
-			KdPrint((__FUNCTION__ ": Assigned channel %d\n", i));
-
-			return STATUS_SUCCESS;
+		if (NT_SUCCESS(status)) {
+			break;
 		}
 	}
 
-	KdPrint((__FUNCTION__ ": Not enough channels\n"));
+	if (!NT_SUCCESS(status)) {
+		KdPrint((__FUNCTION__ ": Not enough channels\n"));
+	}
+	else
+	{
+		KdPrint((__FUNCTION__ ": Assigned channel %d\n", *Channel));
+	}
 
-	return STATUS_INSUFFICIENT_RESOURCES;
+	return status;
 }
 
 VOID 
@@ -210,7 +220,9 @@ Controller_ReleaseChannel(
 )
 {
 	PCONTROLLER_DATA data = ControllerGetData(UcxController);
+	WdfSpinLockAcquire(data->ChannelMaskLock);
 	InterlockedAnd8(&data->ChannelMask, ~(1 << Channel));
+	WdfSpinLockRelease(data->ChannelMaskLock);
 }
 
 VOID
@@ -625,6 +637,10 @@ TR_RunTrSm(
 			else if (TrData->EndpointHandle->Type == EndpointType_Bulk)
 			{
 				hcchar.b.eptype = 2;
+			}
+			else if (TrData->EndpointHandle->Type == EndpointType_Isoch)
+			{
+				hcchar.b.eptype = 1;
 			}
 			hcchar.b.mps = max;
 			hcchar.b.lspddev = 0;
@@ -1461,14 +1477,14 @@ Endpoint_Create(
 			break;
 		}
 
-		status = Endpoint_CreateIoQueue(endpointData);
-
 		if (endpointData->Type == EndpointType_Isoch)
 		{
-			KdPrint(("not implemented\n"));
+			KdPrint(("isochronous transfers not implemented\n"));
 
-			status = STATUS_NOT_IMPLEMENTED;
+			return STATUS_NOT_IMPLEMENTED;
 		}
+
+		status = Endpoint_CreateIoQueue(endpointData);
 
 		if (NT_SUCCESS(status))
 		{

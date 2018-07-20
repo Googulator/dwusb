@@ -1583,14 +1583,13 @@ BOOLEAN OnInterruptIsr(WDFINTERRUPT WdfInterrupt, ULONG MessageID)
 	}
 	else if (gintsts.b.rxstsqlvl)
 	{
-		//TODO
-		KdPrint(("rxstsqlvl\n"));
+		// this should never fire in DMA mode, which is the only mode we support
+		KdPrint(("WTF??? Got rxstsqlvl in DMA mode?!\n"));
 		return TRUE;
 	}
 	else if (gintsts.b.sessreqintr)
 	{
-		//TODO
-		KdPrint(("sessreqintr\n"));
+		WdfInterruptQueueWorkItemForIsr(WdfInterrupt);
 		return TRUE;
 	}
 
@@ -1635,6 +1634,24 @@ VOID OnInterruptWorkItem(WDFINTERRUPT WdfInterrupt, WDFOBJECT WdfDevice)
 	else if (gintsts.b.portintr || gintsts.b.disconnect)
 	{
 		UcxRootHubPortChanged(context->ControllerHandle->RootHub);
+	}
+	else if (gintsts.b.sessreqintr)
+	{
+		// turn on port power
+		hprt0_data_t hprt0;
+		ROOTHUB_DATA *hubctx = RootHubGetData(context->ControllerHandle->RootHub);
+		hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG *)hubctx->Hprt0);
+		hprt0.b.prtena = 0;
+		hprt0.b.prtconndet = 0;
+		hprt0.b.prtenchng = 0;
+		hprt0.b.prtovrcurrchng = 0;
+		hprt0.b.prtpwr = 1;
+		WRITE_REGISTER_ULONG((volatile ULONG *)hubctx->Hprt0, hprt0.d32);
+
+		// and then clear the interrupt so it doesn't fire again (at least that's what the Linux driver says this is for...)
+		gintsts.d32 = 0;
+		gintsts.b.sessreqintr = 1;
+		WRITE_REGISTER_ULONG((volatile ULONG *)context->ControllerHandle->CoreGlobalRegs->gintsts, gintsts.d32);
 	}
 }
 
@@ -1990,7 +2007,7 @@ ControllerInit(
 	gintmsk.d32 = 0;
 	//gintmsk.b.modemismatch = 1; // OTG modeswitching related; we only support host mode
 	//gintmsk.b.otgintr = 1; // also OTG modeswitching
-	gintmsk.b.rxstsqlvl = 1;
+	//gintmsk.b.rxstsqlvl = 1; // should be enabled only for PIO slave mode (we only support DMA mode for now)
 	//gintmsk.b.conidstschng = 1; // also OTG modeswitching
 	//gintmsk.b.wkupintr = 1; // for now, as we don't support any low-power modes or wake-on-USB
 	//gintmsk.b.usbsuspend = 1; // ditto

@@ -1651,7 +1651,7 @@ VOID OnInterruptWorkItem(WDFINTERRUPT WdfInterrupt, WDFOBJECT WdfDevice)
 		// and then clear the interrupt so it doesn't fire again (at least that's what the Linux driver says this is for...)
 		gintsts.d32 = 0;
 		gintsts.b.sessreqintr = 1;
-		WRITE_REGISTER_ULONG((volatile ULONG *)context->ControllerHandle->CoreGlobalRegs->gintsts, gintsts.d32);
+		WRITE_REGISTER_ULONG((volatile ULONG *)&context->ControllerHandle->CoreGlobalRegs->gintsts, gintsts.d32);
 	}
 }
 

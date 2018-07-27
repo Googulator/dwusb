@@ -158,7 +158,7 @@ typedef struct _TR_DATA
 
 	CHSM_DATA NextStateMachine;
 
-	KSPIN_LOCK SpinLock;
+	WDFSPINLOCK SpinLock;
 
 	UINT8 StatusBuffer[64];
 } TR_DATA, *PTR_DATA;
@@ -235,8 +235,7 @@ TR_RunChSm(
 	PTR_DATA TrData
 )
 {
-	KIRQL oldIrql;
-	KeAcquireSpinLock(&TrData->SpinLock, &oldIrql);
+	WdfSpinLockAcquire(TrData->SpinLock);
 
 	__try
 	{
@@ -540,7 +539,7 @@ TR_RunChSm(
 	}
 	__finally
 	{
-		KeReleaseSpinLock(&TrData->SpinLock, oldIrql);
+		WdfSpinLockRelease(TrData->SpinLock);
 	}
 }
 
@@ -1390,7 +1389,7 @@ Endpoint_CreateIoQueue(
 	{
 		PTR_DATA trData = GetTRData(wdfQueue);
 		trData->EndpointHandle = Endpoint;
-		KeInitializeSpinLock(&trData->SpinLock);
+		WdfSpinLockCreate(WDF_NO_OBJECT_ATTRIBUTES, &trData->SpinLock);
 
 		Endpoint->IoQueue = wdfQueue;
 	}

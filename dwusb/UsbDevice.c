@@ -413,7 +413,7 @@ TR_RunChSm(
 				TrData->TrStateMachine.In = FALSE;
 				TrData->TrStateMachine.Channel = TrData->StateMachine.Channel;
 
-				TrData->StateMachine.Urb = FALSE;
+				TrData->StateMachine.Urb = NULL;
 
 				TrData->StateMachine.State = CHSM_AddressSetupWait;
 				break;

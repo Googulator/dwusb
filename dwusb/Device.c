@@ -440,7 +440,7 @@ Return Value:
             (setupPacket->Packet.bRequest != USB_REQUEST_CLEAR_FEATURE) ||
             (setupPacket->Packet.wIndex.Value != 0) ||
             (setupPacket->Packet.wLength != 0)) {
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_URB_FUNCTION;
             status = STATUS_UNSUCCESSFUL;
 			return;
         }
@@ -458,7 +458,7 @@ Return Value:
             break;
 
         default:
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_PARAMETER;
             status = STATUS_UNSUCCESSFUL;
 			return;
         }
@@ -533,7 +533,7 @@ Return Value:
             (portNumber > 1) ||
             (setupPacket->Packet.wLength != 0)) {
 
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_URB_FUNCTION;
             status = STATUS_UNSUCCESSFUL;
             return;
         }
@@ -544,7 +544,7 @@ Return Value:
         //
         if ((featureSelector != PORT_INDICATOR) &&
             (featureSpecificValue != 0)) {
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_PARAMETER;
             status = STATUS_UNSUCCESSFUL;
             return;
         }
@@ -654,7 +654,7 @@ Return Value:
             break;
 
         default:
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_PARAMETER;
             status = STATUS_UNSUCCESSFUL;
             return;
         }
@@ -729,7 +729,7 @@ Return Value:
             (portNumber > 1) ||
             (setupPacket->Packet.wLength != 0)) {
 
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_URB_FUNCTION;
             status = STATUS_UNSUCCESSFUL;
 			return;
         }
@@ -740,7 +740,7 @@ Return Value:
         //
         if ((featureSelector != PORT_TEST) && (featureSelector != PORT_INDICATOR) &&
                 (featureSpecificValue != 0)) {
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_PARAMETER;
             status = STATUS_UNSUCCESSFUL;
 			return;
         }
@@ -795,9 +795,9 @@ Return Value:
 
         case PORT_POWER:
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
-			//hprt0.b.prtconndet = 0;
-			//hprt0.b.prtena = 0;
-			//hprt0.b.prtenchng = 0;
+			hprt0.b.prtconndet = 0;
+			hprt0.b.prtena = 0;
+			hprt0.b.prtenchng = 0;
 			hprt0.b.prtovrcurrchng = 0;
 			hprt0.b.prtovrcurract = 0;
 			hprt0.b.prtpwr = 1;
@@ -819,7 +819,7 @@ Return Value:
 
         default:
 			KdPrint(("Unknown port feature %d\n", featureSelector));
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_PARAMETER;
             status = STATUS_UNSUCCESSFUL;
 			return;
         }
@@ -890,7 +890,7 @@ Return Value:
             (portNumber > 1) ||
             (setupPacket->Packet.wLength != 2)) {
 
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_URB_FUNCTION;
             status = STATUS_UNSUCCESSFUL;
 
 			return;
@@ -1026,7 +1026,7 @@ Return Value:
             (setupPacket->Packet.wIndex.Value != 0) ||
             (setupPacket->Packet.wLength != 4)) {
 
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_URB_FUNCTION;
             status = STATUS_UNSUCCESSFUL;
             return;
         }
@@ -1113,7 +1113,7 @@ Return Value:
             (portNumber > 1) ||
             (setupPacket->Packet.wLength != packetLength)) {
 
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_INVALID_URB_FUNCTION;
             status = STATUS_UNSUCCESSFUL;
             return;
         }
@@ -1166,7 +1166,7 @@ Return Value:
 
         } else {
 
-            urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
+            urb->UrbHeader.Status = USBD_STATUS_NOT_SUPPORTED;
             status = STATUS_UNSUCCESSFUL;
             return;
         }

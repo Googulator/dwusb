@@ -225,16 +225,17 @@ Controller_ReleaseChannel(
 	WdfSpinLockRelease(data->ChannelMaskLock);
 }
 
-VOID
+NTSTATUS
 TR_RunTrSm(
 	PTR_DATA TrData
 );
 
-VOID
+NTSTATUS
 TR_RunChSm(
 	PTR_DATA TrData
 )
 {
+	NTSTATUS status;
 	WdfSpinLockAcquire(TrData->SpinLock);
 
 	__try
@@ -244,7 +245,7 @@ TR_RunChSm(
 			switch (TrData->StateMachine.State)
 			{
 			case CHSM_Idle:
-				return;
+				return STATUS_SUCCESS; // "vacuously successful" - there surely is a better status code for this...
 			case CHSM_ControlSetup:
 			{
 				KdPrint((__FUNCTION__ ": CHSM_ControlSetup %02x %02x %02x %02x %02x %02x %02x %02x\n",
@@ -271,11 +272,11 @@ TR_RunChSm(
 			case CHSM_ControlSetupWait:
 				KdPrint((__FUNCTION__ ": CHSM_ControlSetupWait\n"));
 
-				TR_RunTrSm(TrData);
+				status = TR_RunTrSm(TrData);
 
 				if (TrData->TrStateMachine.State != TRSM_Done)
 				{
-					return;
+					return status;
 				}
 
 				TrData->StateMachine.State = CHSM_ControlSetupDone;
@@ -320,11 +321,11 @@ TR_RunChSm(
 			case CHSM_ControlDataWait:
 				KdPrint((__FUNCTION__ ": CHSM_ControlDataWait\n"));
 
-				TR_RunTrSm(TrData);
+				status = TR_RunTrSm(TrData);
 
 				if (TrData->TrStateMachine.State != TRSM_Done)
 				{
-					return;
+					return status;
 				}
 
 				TrData->StateMachine.State = CHSM_ControlDataDone;
@@ -355,11 +356,11 @@ TR_RunChSm(
 			case CHSM_ControlStatusWait:
 				KdPrint((__FUNCTION__ ": CHSM_ControlStatusWait\n"));
 
-				TR_RunTrSm(TrData);
+				status = TR_RunTrSm(TrData);
 
 				if (TrData->TrStateMachine.State != TRSM_Done)
 				{
-					return;
+					return status;
 				}
 
 				TrData->StateMachine.State = CHSM_ControlStatusDone;
@@ -376,7 +377,7 @@ TR_RunChSm(
 
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_SUCCESS);
 				//TrData->StateMachine.State = CHSM_ControlStatus;
-				return;
+				return STATUS_SUCCESS;
 			}
 			case CHSM_AddressSetup:
 			{
@@ -421,11 +422,11 @@ TR_RunChSm(
 			case CHSM_AddressSetupWait:
 				KdPrint((__FUNCTION__ ": CHSM_AddressSetupWait\n"));
 
-				TR_RunTrSm(TrData);
+				status = TR_RunTrSm(TrData);
 
 				if (TrData->TrStateMachine.State != TRSM_Done)
 				{
-					return;
+					return status;
 				}
 
 				TrData->StateMachine.State = CHSM_AddressSetupDone;
@@ -451,11 +452,11 @@ TR_RunChSm(
 			case CHSM_AddressStatusWait:
 				KdPrint((__FUNCTION__ ": CHSM_AddressStatusWait\n"));
 
-				TR_RunTrSm(TrData);
+				status = TR_RunTrSm(TrData);
 
 				if (TrData->TrStateMachine.State != TRSM_Done)
 				{
-					return;
+					return status;
 				}
 
 				TrData->StateMachine.State = CHSM_AddressStatusDone;
@@ -472,7 +473,7 @@ TR_RunChSm(
 
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_SUCCESS);
 				//TrData->StateMachine.State = CHSM_ControlStatus;
-				return;
+				return STATUS_SUCCESS;
 			}
 			case CHSM_InterruptOrBulkData:
 			{
@@ -501,11 +502,11 @@ TR_RunChSm(
 			case CHSM_InterruptOrBulkDataWait:
 				KdPrint((__FUNCTION__ ": CHSM_InterruptOrBulkDataWait\n"));
 
-				TR_RunTrSm(TrData);
+				status = TR_RunTrSm(TrData);
 
 				if (TrData->TrStateMachine.State != TRSM_Done)
 				{
-					return;
+					return status;
 				}
 
 				TrData->StateMachine.State = CHSM_InterruptOrBulkDataDone;
@@ -532,7 +533,7 @@ TR_RunChSm(
 				TrData->StateMachine.Urb->Hdr.Status = USBD_STATUS_SUCCESS;
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_SUCCESS);
 
-				return;
+				return STATUS_SUCCESS;
 			}
 			}
 		}
@@ -581,7 +582,7 @@ ReviveTrSm(
 	}
 }
 
-VOID
+NTSTATUS
 TR_RunTrSm(
 	PTR_DATA TrData
 )
@@ -748,7 +749,7 @@ TR_RunTrSm(
 				break;
 			}
 
-			return;
+			return STATUS_DEVICE_ALREADY_ATTACHED;
 		}
 		case TRSM_Transferring:
 		{
@@ -911,7 +912,7 @@ TR_RunTrSm(
 				break;
 			}
 
-			return;
+			return STATUS_PENDING;
 		}
 		case TRSM_TransferHalted:
 		{
@@ -1092,7 +1093,7 @@ TR_RunTrSm(
 					Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 					WdfRequestComplete(TrData->StateMachine.Request, STATUS_TIMEOUT);
 
-					return;
+					return STATUS_TIMEOUT;
 				}*/
 
 				TrData->TrStateMachine.State = TRSM_Init;
@@ -1115,7 +1116,7 @@ TR_RunTrSm(
 				//Controller_InvokeTrSm(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData);
 
 				//break;
-				return;
+				return STATUS_PENDING;
 			}
 			else if (hcint.b.stall)
 			{
@@ -1141,7 +1142,7 @@ TR_RunTrSm(
 				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_UNSUCCESSFUL);
 
-				return;
+				return STATUS_UNSUCCESSFUL;
 			}
 			else
 			{
@@ -1163,7 +1164,7 @@ TR_RunTrSm(
 				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_UNSUCCESSFUL);
 
-				return;
+				return STATUS_UNSUCCESSFUL;
 			}
 
 			break;
@@ -1184,7 +1185,7 @@ TR_RunTrSm(
 
 			controllerData->ChTrDatas[channel] = NULL;
 
-			return;
+			return STATUS_SUCCESS;
 		}
 		}
 	}

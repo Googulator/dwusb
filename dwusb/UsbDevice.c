@@ -1200,7 +1200,7 @@ Controller_RunCHSM(
 }
 
 VOID
-Control_WdfEvtIoDefault(
+Endpoint_WdfEvtIoDefault(
 	WDFQUEUE      WdfQueue,
 	WDFREQUEST    WdfRequest
 )
@@ -1245,97 +1245,7 @@ when the StartMapping callback arrives from ESM.
 
 	trData->NextStateMachine.Request = WdfRequest;
 	trData->NextStateMachine.Urb = transferUrb;
-	trData->NextStateMachine.State = CHSM_ControlSetup;
-	trData->NextStateMachine.Channel = channel;
-
-	Controller_SetChannelCallback(trData->EndpointHandle->UsbDeviceHandle->UcxController, channel, Controller_RunCHSM, trData);
-
-	Controller_InvokeTrSm(trData->EndpointHandle->UsbDeviceHandle->UcxController, trData);
-
-	//TR_RunChSm(trData);
-
-	//WdfRequestComplete(WdfRequest, STATUS_NOT_IMPLEMENTED);
-}
-
-VOID
-Interrupt_WdfEvtIoDefault(
-	WDFQUEUE      WdfQueue,
-	WDFREQUEST    WdfRequest
-)
-{
-	PTR_DATA trData;
-	BOOLEAN                 processTransfer;
-	PTRANSFER_URB           transferUrb;
-	WDF_REQUEST_PARAMETERS  wdfRequestParams;
-
-	processTransfer = FALSE;
-
-	KdPrint((__FUNCTION__ "\n"));
-
-	WDF_REQUEST_PARAMETERS_INIT(&wdfRequestParams);
-	WdfRequestGetParameters(WdfRequest, &wdfRequestParams);
-
-	transferUrb = (PTRANSFER_URB)wdfRequestParams.Parameters.Others.Arg1;
-
-	trData = GetTRData(WdfQueue);
-
-	INT channel;
-	NTSTATUS status = Controller_AllocateChannel(trData->EndpointHandle->UsbDeviceHandle->UcxController, &channel);
-
-	if (!NT_SUCCESS(status))
-	{
-		WdfRequestComplete(WdfRequest, STATUS_UNSUCCESSFUL);
-		return;
-	}
-
-	trData->NextStateMachine.Request = WdfRequest;
-	trData->NextStateMachine.Urb = transferUrb;
-	trData->NextStateMachine.State = CHSM_InterruptOrBulkData;
-	trData->NextStateMachine.Channel = channel;
-
-	Controller_SetChannelCallback(trData->EndpointHandle->UsbDeviceHandle->UcxController, channel, Controller_RunCHSM, trData);
-
-	Controller_InvokeTrSm(trData->EndpointHandle->UsbDeviceHandle->UcxController, trData);
-
-	//TR_RunChSm(trData);
-
-	//WdfRequestComplete(WdfRequest, STATUS_NOT_IMPLEMENTED);
-}
-
-VOID
-Bulk_WdfEvtIoDefault(
-	WDFQUEUE      WdfQueue,
-	WDFREQUEST    WdfRequest
-)
-{
-	PTR_DATA trData;
-	BOOLEAN                 processTransfer;
-	PTRANSFER_URB           transferUrb;
-	WDF_REQUEST_PARAMETERS  wdfRequestParams;
-
-	processTransfer = FALSE;
-
-	KdPrint((__FUNCTION__ "\n"));
-
-	WDF_REQUEST_PARAMETERS_INIT(&wdfRequestParams);
-	WdfRequestGetParameters(WdfRequest, &wdfRequestParams);
-
-	transferUrb = (PTRANSFER_URB)wdfRequestParams.Parameters.Others.Arg1;
-
-	trData = GetTRData(WdfQueue);
-
-	INT channel;
-	NTSTATUS status = Controller_AllocateChannel(trData->EndpointHandle->UsbDeviceHandle->UcxController, &channel);
-
-	if (!NT_SUCCESS(status))
-	{
-		WdfRequestComplete(WdfRequest, STATUS_UNSUCCESSFUL);
-		return;
-	}
-
-	trData->NextStateMachine.Request = WdfRequest;
-	trData->NextStateMachine.Urb = transferUrb;
-	trData->NextStateMachine.State = CHSM_InterruptOrBulkData;
+	trData->NextStateMachine.State = trData->EndpointHandle->Type == EndpointType_Control ? CHSM_ControlSetup : CHSM_InterruptOrBulkData;
 	trData->NextStateMachine.Channel = channel;
 
 	Controller_SetChannelCallback(trData->EndpointHandle->UsbDeviceHandle->UcxController, channel, Controller_RunCHSM, trData);
@@ -1360,18 +1270,7 @@ Endpoint_CreateIoQueue(
 	WDFQUEUE                wdfQueue;
 
 	WDF_IO_QUEUE_CONFIG_INIT(&wdfIoQueueConfig, WdfIoQueueDispatchSequential);
-	if (Endpoint->Type == EndpointType_Control)
-	{
-		wdfIoQueueConfig.EvtIoDefault = Control_WdfEvtIoDefault;
-	}
-	else if (Endpoint->Type == EndpointType_Interrupt)
-	{
-		wdfIoQueueConfig.EvtIoDefault = Interrupt_WdfEvtIoDefault;
-	}
-	else if (Endpoint->Type == EndpointType_Bulk)
-	{
-		wdfIoQueueConfig.EvtIoDefault = Bulk_WdfEvtIoDefault;
-	}
+	wdfIoQueueConfig.EvtIoDefault = Endpoint_WdfEvtIoDefault;
 	wdfIoQueueConfig.PowerManaged = WdfFalse;
 
 	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&wdfAttributes, TR_DATA);

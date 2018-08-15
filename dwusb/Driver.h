@@ -67,34 +67,6 @@ struct _UCX_URB_DATA {
 
 typedef VOID(*PFN_CHANNEL_CALLBACK)(PVOID);
 
-typedef struct _TRANSFER_URB {
-
-	struct _URB_HEADER Hdr;
-
-	PVOID UsbdPipeHandle;
-	ULONG TransferFlags;
-	ULONG TransferBufferLength;
-	PVOID TransferBuffer;
-	PMDL TransferBufferMDL;
-	union {
-		ULONG Timeout;              // no Linked Urbs
-		PVOID ReservedMBNull;       // fields
-	};
-	struct _UCX_URB_DATA UrbData;   // fields for HCD use
-
-	union {
-		struct {
-			ULONG StartFrame;
-			ULONG NumberOfPackets;
-			ULONG ErrorCount;
-			USBD_ISO_PACKET_DESCRIPTOR IsoPacket[1];
-		} Isoch;
-		UCHAR SetupPacket[8];
-	} u;
-
-} TRANSFER_URB, *PTRANSFER_URB;
-
-
 #include "device.h"
 #include "queue.h"
 #include "trace.h"

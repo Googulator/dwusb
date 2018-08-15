@@ -106,7 +106,7 @@ typedef struct _CHSM_DATA
 {
 	CHSM_STATE State;
 
-	PTRANSFER_URB Urb;
+	PURB Urb;
 	WDFREQUEST Request;
 
 	USHORT Address;
@@ -249,19 +249,19 @@ TR_RunChSm(
 			case CHSM_ControlSetup:
 			{
 				KdPrint((__FUNCTION__ ": CHSM_ControlSetup %02x %02x %02x %02x %02x %02x %02x %02x\n",
-					TrData->StateMachine.Urb->u.SetupPacket[0],
-					TrData->StateMachine.Urb->u.SetupPacket[1],
-					TrData->StateMachine.Urb->u.SetupPacket[2],
-					TrData->StateMachine.Urb->u.SetupPacket[3],
-					TrData->StateMachine.Urb->u.SetupPacket[4],
-					TrData->StateMachine.Urb->u.SetupPacket[5],
-					TrData->StateMachine.Urb->u.SetupPacket[6],
-					TrData->StateMachine.Urb->u.SetupPacket[7]
+					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[0],
+					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[1],
+					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[2],
+					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[3],
+					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[4],
+					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[5],
+					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[6],
+					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[7]
 					));
 
 				TrData->TrStateMachine.State = TRSM_Init;
 				TrData->TrStateMachine.Pid = DWC_HCTSIZ_SETUP;
-				TrData->TrStateMachine.Buffer = TrData->StateMachine.Urb->u.SetupPacket;
+				TrData->TrStateMachine.Buffer = TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket;
 				TrData->TrStateMachine.Length = 8;
 				TrData->TrStateMachine.In = FALSE;
 				TrData->TrStateMachine.Channel = TrData->StateMachine.Channel;
@@ -285,7 +285,7 @@ TR_RunChSm(
 			case CHSM_ControlSetupDone:
 				KdPrint((__FUNCTION__ ": CHSM_ControlSetupDone\n"));
 
-				if (TrData->StateMachine.Urb->TransferBufferLength)
+				if (TrData->StateMachine.Urb->UrbControlTransfer.TransferBufferLength)
 				{
 					TrData->StateMachine.State = CHSM_ControlData;
 				}
@@ -297,21 +297,21 @@ TR_RunChSm(
 			case CHSM_ControlData:
 			{
 				// in?
-				INT in = TrData->StateMachine.Urb->TransferFlags & USBD_TRANSFER_DIRECTION_IN;
+				INT in = TrData->StateMachine.Urb->UrbControlTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN;
 
 				KdPrint((__FUNCTION__ ": CHSM_ControlData\n"));
 
-				PVOID transferBuffer = TrData->StateMachine.Urb->TransferBuffer;
+				PVOID transferBuffer = TrData->StateMachine.Urb->UrbControlTransfer.TransferBuffer;
 
-				if (TrData->StateMachine.Urb->TransferBufferMDL)
+				if (TrData->StateMachine.Urb->UrbControlTransfer.TransferBufferMDL)
 				{
-					transferBuffer = MmGetSystemAddressForMdlSafe(TrData->StateMachine.Urb->TransferBufferMDL, HighPagePriority);
+					transferBuffer = MmGetSystemAddressForMdlSafe(TrData->StateMachine.Urb->UrbControlTransfer.TransferBufferMDL, HighPagePriority);
 				}
 
 				TrData->TrStateMachine.State = TRSM_Init;
 				TrData->TrStateMachine.Pid = DWC_HCTSIZ_DATA1;
 				TrData->TrStateMachine.Buffer = transferBuffer;
-				TrData->TrStateMachine.Length = TrData->StateMachine.Urb->TransferBufferLength;
+				TrData->TrStateMachine.Length = TrData->StateMachine.Urb->UrbControlTransfer.TransferBufferLength;
 				TrData->TrStateMachine.In = in;
 				TrData->TrStateMachine.Channel = TrData->StateMachine.Channel;
 
@@ -339,7 +339,7 @@ TR_RunChSm(
 			case CHSM_ControlStatus:
 			{
 				// in?
-				INT in = TrData->StateMachine.Urb->TransferFlags & USBD_TRANSFER_DIRECTION_IN;
+				INT in = TrData->StateMachine.Urb->UrbControlTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN;
 
 				KdPrint((__FUNCTION__ ": CHSM_ControlStatus\n"));
 
@@ -347,7 +347,7 @@ TR_RunChSm(
 				TrData->TrStateMachine.Pid = DWC_HCTSIZ_DATA1;
 				TrData->TrStateMachine.Buffer = TrData->StatusBuffer;
 				TrData->TrStateMachine.Length = 0;
-				TrData->TrStateMachine.In = (TrData->StateMachine.Urb->TransferBufferLength) ? !in : TRUE;
+				TrData->TrStateMachine.In = (TrData->StateMachine.Urb->UrbControlTransfer.TransferBufferLength) ? !in : TRUE;
 				TrData->TrStateMachine.Channel = TrData->StateMachine.Channel;
 
 				TrData->StateMachine.State = CHSM_ControlStatusWait;
@@ -372,7 +372,7 @@ TR_RunChSm(
 
 				TrData->StateMachine.State = CHSM_Idle;
 
-				TrData->StateMachine.Urb->Hdr.Status = USBD_STATUS_SUCCESS;
+				TrData->StateMachine.Urb->UrbControlTransfer.Hdr.Status = USBD_STATUS_SUCCESS;
 				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_SUCCESS);
@@ -478,21 +478,21 @@ TR_RunChSm(
 			case CHSM_InterruptOrBulkData:
 			{
 				// in?
-				INT in = TrData->StateMachine.Urb->TransferFlags & USBD_TRANSFER_DIRECTION_IN;
+				INT in = TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN;
 
 				KdPrint((__FUNCTION__ ": CHSM_InterruptOrBulkData\n"));
 
-				PVOID transferBuffer = TrData->StateMachine.Urb->TransferBuffer;
+				PVOID transferBuffer = TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferBuffer;
 
-				if (TrData->StateMachine.Urb->TransferBufferMDL)
+				if (TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferBufferMDL)
 				{
-					transferBuffer = MmGetSystemAddressForMdlSafe(TrData->StateMachine.Urb->TransferBufferMDL, HighPagePriority);
+					transferBuffer = MmGetSystemAddressForMdlSafe(TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferBufferMDL, HighPagePriority);
 				}
 
 				TrData->TrStateMachine.State = TRSM_Init;
 				TrData->TrStateMachine.Pid = (in) ? TrData->EndpointHandle->InToggle : TrData->EndpointHandle->OutToggle;
 				TrData->TrStateMachine.Buffer = transferBuffer;
-				TrData->TrStateMachine.Length = TrData->StateMachine.Urb->TransferBufferLength;
+				TrData->TrStateMachine.Length = TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferBufferLength;
 				TrData->TrStateMachine.In = in;
 				TrData->TrStateMachine.Channel = TrData->StateMachine.Channel;
 
@@ -516,7 +516,7 @@ TR_RunChSm(
 			{
 				KdPrint((__FUNCTION__ ": CHSM_InterruptOrBulkDataDone\n"));
 
-				INT in = TrData->StateMachine.Urb->TransferFlags & USBD_TRANSFER_DIRECTION_IN;
+				INT in = TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN;
 
 				if (in)
 				{
@@ -530,7 +530,7 @@ TR_RunChSm(
 				TrData->StateMachine.State = CHSM_Idle;
 				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 
-				TrData->StateMachine.Urb->Hdr.Status = USBD_STATUS_SUCCESS;
+				TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.Hdr.Status = USBD_STATUS_SUCCESS;
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_SUCCESS);
 
 				return STATUS_SUCCESS;
@@ -1123,7 +1123,7 @@ TR_RunTrSm(
 			{
 				if (TrData->StateMachine.Urb)
 				{
-					TrData->StateMachine.Urb->Hdr.Status = USBD_STATUS_STALL_PID;
+					TrData->StateMachine.Urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
 				}
 
 				KdPrint((__FUNCTION__ ": Halted: stall - int %08x siz %08x char %08x splt %08x\n",
@@ -1149,7 +1149,7 @@ TR_RunTrSm(
 			{
 				if (TrData->StateMachine.Urb)
 				{
-					TrData->StateMachine.Urb->Hdr.Status = USBD_STATUS_XACT_ERROR;
+					TrData->StateMachine.Urb->UrbHeader.Status = USBD_STATUS_XACT_ERROR;
 				}
 
 				KdPrint((__FUNCTION__ ": Halted: unknown error - %08x\n", hcint.d32));
@@ -1221,7 +1221,7 @@ when the StartMapping callback arrives from ESM.
 {
 	PTR_DATA trData;
 	BOOLEAN                 processTransfer;
-	PTRANSFER_URB           transferUrb;
+	PURB           urb;
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
 
 	processTransfer = FALSE;
@@ -1231,7 +1231,7 @@ when the StartMapping callback arrives from ESM.
 	WDF_REQUEST_PARAMETERS_INIT(&wdfRequestParams);
 	WdfRequestGetParameters(WdfRequest, &wdfRequestParams);
 
-	transferUrb = (PTRANSFER_URB)wdfRequestParams.Parameters.Others.Arg1;
+	urb = (PURB)wdfRequestParams.Parameters.Others.Arg1;
 
 	trData = GetTRData(WdfQueue);
 
@@ -1245,7 +1245,7 @@ when the StartMapping callback arrives from ESM.
 	}
 
 	trData->NextStateMachine.Request = WdfRequest;
-	trData->NextStateMachine.Urb = transferUrb;
+	trData->NextStateMachine.Urb = urb;
 	trData->NextStateMachine.State = trData->EndpointHandle->Type == EndpointType_Control ? CHSM_ControlSetup : CHSM_InterruptOrBulkData;
 	trData->NextStateMachine.Channel = channel;
 

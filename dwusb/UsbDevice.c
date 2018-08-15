@@ -720,6 +720,7 @@ TR_RunTrSm(
 					controllerHandle->ChTtPorts[i] == TrData->TrStateMachine.TtPort)
 				{
 					foundSelf = TRUE;
+					KdPrint((__FUNCTION__ ": FoundSelf"));
 				}
 			}
 

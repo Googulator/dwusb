@@ -913,6 +913,7 @@ TR_RunTrSm(
 				break;
 			}
 
+			KdPrint((__FUNCTION__ ": TRSM_TransferWaiting: not halted yet\n"));
 			return STATUS_PENDING;
 		}
 		case TRSM_TransferHalted:
@@ -1197,6 +1198,8 @@ Controller_RunCHSM(
 	PVOID Context
 )
 {
+	KdPrint((__FUNCTION__ ": Invoking channel SM from interrupt\n"));
+
 	TR_RunChSm((PTR_DATA)Context);
 }
 
@@ -1237,12 +1240,12 @@ when the StartMapping callback arrives from ESM.
 
 	processTransfer = FALSE;
 
-	KdPrint((__FUNCTION__ "\n"));
-
 	WDF_REQUEST_PARAMETERS_INIT(&wdfRequestParams);
 	WdfRequestGetParameters(WdfRequest, &wdfRequestParams);
 
 	urb = (PURB)wdfRequestParams.Parameters.Others.Arg1;
+
+	KdPrint((__FUNCTION__ ": Processing URB with function 0x%04x\n", urb->UrbHeader.Function));
 
 	trData = GetTRData(WdfQueue);
 
@@ -2002,6 +2005,8 @@ Controller_ResumeCh(
 )
 {
 	UNREFERENCED_PARAMETER(Timer);
+
+	KdPrint((__FUNCTION__ ": resuming channel SM from timer\n"));
 
 	PTR_DATA trData = *(PTR_DATA*)Context;
 

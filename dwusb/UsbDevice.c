@@ -945,7 +945,7 @@ TR_RunTrSm(
 
 					hfnum.d32 = TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->hfnum;
 
-					if (((hfnum.b.frnum - TrData->TrStateMachine.SSplitFrameNum) & 0x3FFF) > 4)
+					if (((hfnum.b.frnum - TrData->TrStateMachine.SSplitFrameNum) & 0x3FFF) > 16)
 					{
 						KdPrint(("Split NYET timeout, retry\n"));
 

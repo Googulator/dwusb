@@ -1201,9 +1201,12 @@ Controller_RunCHSM(
 }
 
 VOID
-Endpoint_WdfEvtIoDefault(
+Endpoint_WdfEvtIoDeviceControl(
 	WDFQUEUE      WdfQueue,
-	WDFREQUEST    WdfRequest
+	WDFREQUEST    WdfRequest,
+	size_t OutputBufferLength,
+	size_t InputBufferLength,
+	ULONG IoControlCode
 )
 /*++
 
@@ -1223,6 +1226,14 @@ when the StartMapping callback arrives from ESM.
 	BOOLEAN                 processTransfer;
 	PURB           urb;
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
+
+	UNREFERENCED_PARAMETER((OutputBufferLength, InputBufferLength));
+
+	if (IoControlCode != IOCTL_INTERNAL_USB_SUBMIT_URB) {
+		KdPrint((__FUNCTION__ ": Unexpected IOCTL %d\n", IoControlCode));
+		WdfRequestComplete(WdfRequest, STATUS_NOT_IMPLEMENTED);
+		return;
+	}
 
 	processTransfer = FALSE;
 
@@ -1258,6 +1269,20 @@ when the StartMapping callback arrives from ESM.
 	//WdfRequestComplete(WdfRequest, STATUS_NOT_IMPLEMENTED);
 }
 
+
+// Dummy callback to capture and report unsupported requests
+VOID
+Endpoint_WdfEvtIoDefault(
+	WDFQUEUE      WdfQueue,
+	WDFREQUEST    WdfRequest
+)
+{
+	UNREFERENCED_PARAMETER((WdfQueue));
+	KdPrint((__FUNCTION__ ": Unexpected non-IOCTL request\n"));
+	WdfRequestComplete(WdfRequest, STATUS_NOT_IMPLEMENTED);
+	return;
+}
+
 NTSTATUS
 Endpoint_CreateIoQueue(
 	__in
@@ -1271,8 +1296,10 @@ Endpoint_CreateIoQueue(
 	WDFQUEUE                wdfQueue;
 
 	WDF_IO_QUEUE_CONFIG_INIT(&wdfIoQueueConfig, WdfIoQueueDispatchSequential);
+	wdfIoQueueConfig.EvtIoDeviceControl = Endpoint_WdfEvtIoDeviceControl;
+	wdfIoQueueConfig.EvtIoInternalDeviceControl = Endpoint_WdfEvtIoDeviceControl;
 	wdfIoQueueConfig.EvtIoDefault = Endpoint_WdfEvtIoDefault;
-	wdfIoQueueConfig.PowerManaged = WdfFalse;
+	//wdfIoQueueConfig.PowerManaged = WdfFalse;
 
 	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&wdfAttributes, TR_DATA);
 

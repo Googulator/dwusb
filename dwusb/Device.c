@@ -2011,10 +2011,10 @@ ControllerInit(
 	//gintmsk.b.conidstschng = 1; // also OTG modeswitching
 	//gintmsk.b.wkupintr = 1; // for now, as we don't support any low-power modes or wake-on-USB
 	//gintmsk.b.usbsuspend = 1; // ditto
-	gintmsk.b.sessreqintr = 1;
-	gintmsk.b.disconnect = 1; // "Disconnect from root port" - do we need this? can this ever happen on the Pi?
+	//gintmsk.b.sessreqintr = 1;
+	//gintmsk.b.disconnect = 1; // "Disconnect from root port" - do we need this? can this ever happen on the Pi?
 	gintmsk.b.hcintr = 1;
-	gintmsk.b.portintr = 1;
+	//gintmsk.b.portintr = 1;
 	controllerData->CoreGlobalRegs->gintmsk = gintmsk.d32;
 
 	controllerData->HostGlobalRegs->haintmsk = 0x1;
@@ -2064,8 +2064,8 @@ dwusbProbeResources(
 				&interruptObjectAttributes,
 				INTERRUPT_CONTEXT);
 			WDF_INTERRUPT_CONFIG_INIT(&Config, OnInterruptIsr, NULL);
-			Config.PassiveHandling = TRUE;
-			Config.AutomaticSerialization = TRUE;
+			//Config.PassiveHandling = TRUE;
+			//Config.AutomaticSerialization = TRUE;
 			Config.EvtInterruptWorkItem = OnInterruptWorkItem;
 			Config.InterruptRaw = WdfCmResourceListGetDescriptor(rawres, i);
 			Config.InterruptTranslated = desc;

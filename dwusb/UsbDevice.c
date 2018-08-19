@@ -939,6 +939,15 @@ TR_RunTrSm(
 			hcintmsk_data_t hcintmsk;
 			hcintmsk.d32 = 0;
 			hcintmsk.b.chhltd = 1;
+			hcintmsk.b.ack = 1;
+			hcintmsk.b.bblerr = 1;
+			hcintmsk.b.datatglerr = 1;
+			hcintmsk.b.frmovrun = 1;
+			hcintmsk.b.nak = 1;
+			hcintmsk.b.nyet = 1;
+			hcintmsk.b.stall = 1;
+			hcintmsk.b.xacterr = 1;
+			hcintmsk.b.xfercompl = 1;
 
 			_DataSynchronizationBarrier();
 
@@ -988,13 +997,25 @@ TR_RunTrSm(
 			controllerHandle = ControllerGetData(TrData->EndpointHandle->UsbDeviceHandle->UcxController);
 
 			hcint_data_t hcint;
+			hcint_data_t hcintref;
+			hcintref.d32 = 0;
+			hcintref.b.chhltd = 1;
+			hcintref.b.ack = 1;
+			hcintref.b.bblerr = 1;
+			hcintref.b.datatglerr = 1;
+			hcintref.b.frmovrun = 1;
+			hcintref.b.nak = 1;
+			hcintref.b.nyet = 1;
+			hcintref.b.stall = 1;
+			hcintref.b.xacterr = 1;
+			hcintref.b.xfercomp = 1;
 
 			KeMemoryBarrier();
 			_DataSynchronizationBarrier();
 
 			hcint.d32 = regs->hcint;
 
-			if (hcint.b.chhltd)
+			if (hcint.d32 & hcintref.d32)
 			{
 				TrData->TrStateMachine.State = TRSM_TransferHalted;
 				TrData->TrStateMachine.IsRetry = 0;

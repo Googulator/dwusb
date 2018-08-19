@@ -189,8 +189,6 @@ Controller_AllocateChannel(
 
 	for (int i = 0; i < 8; i++)
 	{
-		if (i == 3) // channel 3 is buggy?
-			continue;
 		WdfSpinLockAcquire(data->ChannelMaskLock);
 		if (!(data->ChannelMask & (1 << i)))
 		{
@@ -599,6 +597,46 @@ ReviveTrSm(
 	}
 }
 
+INT TR_PollingInterval(PTR_DATA TrData)
+{
+	switch (TrData->EndpointHandle->Type)
+	{
+	case EndpointType_Control:
+	case EndpointType_Interrupt:
+		switch (TrData->EndpointHandle->UsbDeviceHandle->UsbDeviceInfo.DeviceSpeed)
+		{
+		case UsbLowSpeed:
+			return 8000 * max((TrData->EndpointHandle->UsbEndpointDescriptor.bInterval + 7) / 8, 1);
+		case UsbFullSpeed:
+			return 1000 * max(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 1);
+		case UsbHighSpeed:
+			return 125 * (1 << (min(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 16) - 1));
+		}
+		break;
+	case EndpointType_Bulk:
+		switch (TrData->EndpointHandle->UsbDeviceHandle->UsbDeviceInfo.DeviceSpeed)
+		{
+		case UsbLowSpeed: // forbidden by spec; fall through to full-speed case
+		case UsbFullSpeed:
+			return 1000 * max(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 1);
+		case UsbHighSpeed:
+			return 125 * max(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 1);
+		}
+		break;
+	case EndpointType_Isoch:
+		switch (TrData->EndpointHandle->UsbDeviceHandle->UsbDeviceInfo.DeviceSpeed)
+		{
+		case UsbLowSpeed: // forbidden by spec; fall through to full-speed case
+		case UsbFullSpeed:
+			return 1000 * (1 << (min(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 16) - 1));
+		case UsbHighSpeed:
+			return 125 * (1 << (min(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 16) - 1));
+		}
+		break;
+	}
+	return 1000; // a safe default if we somehow end up here
+}
+
 NTSTATUS
 TR_RunTrSm(
 	PTR_DATA TrData,
@@ -634,7 +672,9 @@ TR_RunTrSm(
 
 				controllerHandle->ChTrDatas[TrData->TrStateMachine.Channel] = NULL;
 
-				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
+				// intentionally leak this channel so it doesn't get assigned to any other transaction, as it's broken beyond recovery at this point
+				// FIXME figure out a way to reset it and return it to the pool
+				// Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_TIMEOUT);
 
 				return STATUS_TIMEOUT;
@@ -1206,7 +1246,7 @@ TR_RunTrSm(
 
 				ExSetTimer(
 					controllerHandle->ChResumeTimers[channel],
-					WDF_REL_TIMEOUT_IN_MS(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval),
+					WDF_REL_TIMEOUT_IN_US(TR_PollingInterval(TrData)),
 					0,
 					NULL
 				);

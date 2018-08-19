@@ -71,7 +71,7 @@ Controller_SetChannelCallback(
 {
 	PCONTROLLER_DATA data = ControllerGetData(UcxController);
 
-	if (Channel >= 0 && Channel < 16)
+	if (Channel >= 0 && Channel < NUM_CHANNELS)
 	{
 		data->ChannelCallbacks[Channel] = Callback;
 		data->ChannelCallbackContext[Channel] = Context;
@@ -1618,7 +1618,7 @@ VOID OnInterruptWorkItem(WDFINTERRUPT WdfInterrupt, WDFOBJECT WdfDevice)
 
 		uint32_t haint = context->ControllerHandle->HostGlobalRegs->haint;
 
-		for (int i = 0; i < 16; i++)
+		for (int i = 0; i < NUM_CHANNELS; i++)
 		{
 			if (haint & (1 << i))
 			{
@@ -1682,7 +1682,7 @@ void DeviceSystemThread(
 
 			uint32_t haint = data->HostGlobalRegs->haint;
 
-			for (int i = 0; i < 16; i++)
+			for (int i = 0; i < NUM_CHANNELS; i++)
 			{
 				if (haint & (1 << i))
 				{
@@ -1750,7 +1750,7 @@ ControllerCreate(
 
 	PDEVICE_CONTEXT ctx = DeviceGetContext(WdfDevice);
 
-	for (int i = 0; i < 8; i++)
+	for (int i = 0; i < NUM_CHANNELS; i++)
 	{
 		controllerData->ChResumeTimers[i] = ExAllocateTimer(Controller_ResumeCh, &controllerData->ChResumeContexts[i], EX_TIMER_HIGH_RESOLUTION);
 	}
@@ -1768,7 +1768,7 @@ ControllerCreate(
 	controllerData->HostGlobalRegs = MmMapIoSpace(hostBase, sizeof(dwc_otg_host_global_regs_t), MmNonCached);
 	controllerData->PcgcCtl = MmMapIoSpace(pcgcBase, sizeof(uint32_t), MmNonCached);
 
-	for (int i = 0; i < 16; i++)
+	for (int i = 0; i < NUM_CHANNELS; i++)
 	{
 		controllerData->ChannelCallbacks[i] = NULL;
 		controllerData->ChannelCallbackContext[i] = NULL;
@@ -1822,7 +1822,7 @@ ControllerCreate(
 	PHYSICAL_ADDRESS BoundaryAddress = { 0 };
 	PHYSICAL_ADDRESS addrProperty;
 
-	for (int i = 0; i < 8; i++)
+	for (int i = 0; i < NUM_CHANNELS; i++)
 	{
 		HighestAcceptableAddress.QuadPart = HEX_1_G;
 

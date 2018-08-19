@@ -67,11 +67,11 @@ typedef struct _CONTROLLER_DATA {
 	WDFDEVICE WdfDevice;
 	WDFINTERRUPT WdfInterrupt;
 
-	PFN_CHANNEL_CALLBACK ChannelCallbacks[16];
-	PVOID ChannelCallbackContext[16];
+	PFN_CHANNEL_CALLBACK ChannelCallbacks[NUM_CHANNELS];
+	PVOID ChannelCallbackContext[NUM_CHANNELS];
 
-	PVOID CommonBufferBase[8];
-	PHYSICAL_ADDRESS CommonBufferBaseLA[8];
+	PVOID CommonBufferBase[NUM_CHANNELS];
+	PHYSICAL_ADDRESS CommonBufferBaseLA[NUM_CHANNELS];
 
 	BOOLEAN UsbAddressInit;
 	USB_ADDRESS_LIST UsbAddressList;
@@ -79,16 +79,16 @@ typedef struct _CONTROLLER_DATA {
 	BOOLEAN SmDpcInited;
 	KDPC SmDpc;
 
-	BOOLEAN ChSmDpcInited[8];
-	KDPC ChSmDpc[8];
+	BOOLEAN ChSmDpcInited[NUM_CHANNELS];
+	KDPC ChSmDpc[NUM_CHANNELS];
 
-	PEX_TIMER ChResumeTimers[8];
-	PVOID ChResumeContexts[8];
+	PEX_TIMER ChResumeTimers[NUM_CHANNELS];
+	PVOID ChResumeContexts[NUM_CHANNELS];
 
-	INT ChTtHubs[8];
-	INT ChTtPorts[8];
+	INT ChTtHubs[NUM_CHANNELS];
+	INT ChTtPorts[NUM_CHANNELS];
 
-	PVOID ChTrDatas[8];
+	PVOID ChTrDatas[NUM_CHANNELS];
 
 	UCXROOTHUB RootHub;
 

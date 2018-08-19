@@ -26,6 +26,8 @@ Environment:
 #include <Wdfusb.h>
 #include <ucx/1.4/ucxclass.h>
 
+#define NUM_CHANNELS 16
+
 typedef enum _USB_HUB_FEATURE_SELECTOR {
 	C_HUB_LOCAL_POWER = 0,
 	C_HUB_OVER_CURRENT = 1

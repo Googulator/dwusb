@@ -40,7 +40,7 @@ typedef struct _USBDEVICE_DATA
 	UCXENDPOINT DefaultEndpoint;
 
 	dwc_otg_host_global_regs_t* HostGlobalRegs;
-	dwc_otg_hc_regs_t* ChannelRegs[16];
+	dwc_otg_hc_regs_t* ChannelRegs[NUM_CHANNELS];
 
 	ULONG Address;
 	UCXUSBDEVICE_INFO UsbDeviceInfo;
@@ -187,7 +187,7 @@ Controller_AllocateChannel(
 	PCONTROLLER_DATA data = ControllerGetData(UcxController);
 	NTSTATUS status = STATUS_INSUFFICIENT_RESOURCES;
 
-	for (int i = 0; i < 8; i++)
+	for (int i = 0; i < NUM_CHANNELS; i++)
 	{
 		WdfSpinLockAcquire(data->ChannelMaskLock);
 		if (!(data->ChannelMask & (1 << i)))
@@ -570,7 +570,7 @@ ReviveTrSm(
 	controllerData->ChTtHubs[channel] = -1;
 	controllerData->ChTtPorts[channel] = -1;
 
-	for (int i = 0; i < 8; i++)
+	for (int i = 0; i < NUM_CHANNELS; i++)
 	{
 		PTR_DATA chanData = controllerData->ChTrDatas[i];
 
@@ -798,7 +798,7 @@ TR_RunTrSm(
 
 			BOOLEAN foundSelf = FALSE;
 
-			for (int i = 0; i < 8; i++)
+			for (int i = 0; i < NUM_CHANNELS; i++)
 			{
 				if (controllerHandle->ChTtHubs[i] == TrData->TrStateMachine.TtHub &&
 					controllerHandle->ChTtPorts[i] == TrData->TrStateMachine.TtPort)
@@ -2272,7 +2272,7 @@ UsbDevice_UcxEvtDeviceAdd(
 		LARGE_INTEGER channelBase;
 		channelBase.QuadPart = deviceCtx->MemoryBase.QuadPart + DWC_OTG_HOST_CHAN_REGS_OFFSET;
 
-		for (int i = 0; i < 16; i++)
+		for (int i = 0; i < NUM_CHANNELS; i++)
 		{
 			usbDeviceData->ChannelRegs[i] = MmMapIoSpace(channelBase, sizeof(dwc_otg_hc_regs_t), MmNonCached);
 			channelBase.QuadPart += DWC_OTG_CHAN_REGS_OFFSET;

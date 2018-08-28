@@ -233,6 +233,9 @@ TR_RunTrSm(
 	BOOLEAN IsInterrupt
 );
 
+#define ADDRESS TrData->EndpointHandle->UsbDeviceHandle->Address
+#define ENDPOINT TrData->EndpointHandle->UsbEndpointDescriptor.bEndpointAddress & USB_ENDPOINT_ADDRESS_MASK
+
 NTSTATUS
 TR_RunChSm(
 	PTR_DATA TrData,
@@ -256,8 +259,8 @@ TR_RunChSm(
 				return STATUS_SUCCESS; // "vacuously successful" - there surely is a better status code for this...
 			case CHSM_ControlSetup:
 			{
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlSetup %02x %02x %02x %02x %02x %02x %02x %02x\n",
-					TrData->TrStateMachine.Channel,
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlSetup %02x %02x %02x %02x %02x %02x %02x %02x\n",
+					ADDRESS, ENDPOINT,
 					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[0],
 					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[1],
 					TrData->StateMachine.Urb->UrbControlTransfer.SetupPacket[2],
@@ -280,7 +283,7 @@ TR_RunChSm(
 				break;
 			}
 			case CHSM_ControlSetupWait:
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlSetupWait\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlSetupWait\n", ADDRESS, ENDPOINT));
 
 				status = TR_RunTrSm(TrData, IsInterrupt);
 
@@ -293,7 +296,7 @@ TR_RunChSm(
 
 				break;
 			case CHSM_ControlSetupDone:
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlSetupDone\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlSetupDone\n", ADDRESS, ENDPOINT));
 
 				if (TrData->StateMachine.Urb->UrbControlTransfer.TransferBufferLength)
 				{
@@ -309,7 +312,7 @@ TR_RunChSm(
 				// in?
 				INT in = TrData->StateMachine.Urb->UrbControlTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN;
 
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlData\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlData\n", ADDRESS, ENDPOINT));
 
 				PVOID transferBuffer = TrData->StateMachine.Urb->UrbControlTransfer.TransferBuffer;
 
@@ -330,7 +333,7 @@ TR_RunChSm(
 				break;
 			}
 			case CHSM_ControlDataWait:
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlDataWait\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlDataWait\n", ADDRESS, ENDPOINT));
 
 				status = TR_RunTrSm(TrData, IsInterrupt);
 
@@ -343,7 +346,7 @@ TR_RunChSm(
 
 				break;
 			case CHSM_ControlDataDone:
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlDataDone\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlDataDone\n", ADDRESS, ENDPOINT));
 
 				TrData->StateMachine.State = CHSM_ControlStatus;
 				break;
@@ -352,7 +355,7 @@ TR_RunChSm(
 				// in?
 				INT in = TrData->StateMachine.Urb->UrbControlTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN;
 
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlStatus\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlStatus\n", ADDRESS, ENDPOINT));
 
 				TrData->TrStateMachine.State = TRSM_Init;
 				TrData->TrStateMachine.Strikes = 0;
@@ -366,7 +369,7 @@ TR_RunChSm(
 				break;
 			}
 			case CHSM_ControlStatusWait:
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlStatusWait\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlStatusWait\n", ADDRESS, ENDPOINT));
 
 				status = TR_RunTrSm(TrData, IsInterrupt);
 
@@ -380,7 +383,7 @@ TR_RunChSm(
 				break;
 			case CHSM_ControlStatusDone:
 			{
-				KdPrint((__FUNCTION__ "(%d): CHSM_ControlStatusDone\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlStatusDone\n", ADDRESS, ENDPOINT));
 
 				TrData->StateMachine.State = CHSM_Idle;
 
@@ -395,7 +398,7 @@ TR_RunChSm(
 			{
 				static USB_DEFAULT_PIPE_SETUP_PACKET setupPacket;
 
-				KdPrint((__FUNCTION__ "(%d): CHSM_AddressSetup\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_AddressSetup\n", ADDRESS, ENDPOINT));
 
 #define USBPORT_INIT_SETUP_PACKET(s, brequest, \
     direction, recipient, typ, wvalue, windex, wlength) \
@@ -433,7 +436,7 @@ TR_RunChSm(
 				break;
 			}
 			case CHSM_AddressSetupWait:
-				KdPrint((__FUNCTION__ "(%d): CHSM_AddressSetupWait\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_AddressSetupWait\n", ADDRESS, ENDPOINT));
 
 				status = TR_RunTrSm(TrData, IsInterrupt);
 
@@ -446,12 +449,12 @@ TR_RunChSm(
 
 				break;
 			case CHSM_AddressSetupDone:
-				KdPrint((__FUNCTION__ "(%d): CHSM_AddressSetupDone\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_AddressSetupDone\n", ADDRESS, ENDPOINT));
 
 				TrData->StateMachine.State = CHSM_AddressStatus;
 				break;
 			case CHSM_AddressStatus:
-				KdPrint((__FUNCTION__ "(%d): CHSM_AddressStatus\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_AddressStatus\n", ADDRESS, ENDPOINT));
 
 				TrData->TrStateMachine.State = TRSM_Init;
 				TrData->TrStateMachine.Strikes = 0;
@@ -464,7 +467,7 @@ TR_RunChSm(
 				TrData->StateMachine.State = CHSM_AddressStatusWait;
 				break;
 			case CHSM_AddressStatusWait:
-				KdPrint((__FUNCTION__ "(%d): CHSM_AddressStatusWait\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_AddressStatusWait\n", ADDRESS, ENDPOINT));
 
 				status = TR_RunTrSm(TrData, IsInterrupt);
 
@@ -478,7 +481,7 @@ TR_RunChSm(
 				break;
 			case CHSM_AddressStatusDone:
 			{
-				KdPrint((__FUNCTION__ "(%d): CHSM_AddressStatusDone\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_AddressStatusDone\n", ADDRESS, ENDPOINT));
 
 				TrData->EndpointHandle->UsbDeviceHandle->Address = TrData->StateMachine.Address;
 
@@ -494,7 +497,7 @@ TR_RunChSm(
 				// in?
 				INT in = TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN;
 
-				KdPrint((__FUNCTION__ "(%d): CHSM_InterruptOrBulkData\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_InterruptOrBulkData\n", ADDRESS, ENDPOINT));
 
 				PVOID transferBuffer = TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferBuffer;
 
@@ -515,7 +518,7 @@ TR_RunChSm(
 				break;
 			}
 			case CHSM_InterruptOrBulkDataWait:
-				KdPrint((__FUNCTION__ "(%d): CHSM_InterruptOrBulkDataWait\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_InterruptOrBulkDataWait\n", ADDRESS, ENDPOINT));
 
 				status = TR_RunTrSm(TrData, IsInterrupt);
 
@@ -529,7 +532,7 @@ TR_RunChSm(
 				break;
 			case CHSM_InterruptOrBulkDataDone:
 			{
-				KdPrint((__FUNCTION__ "(%d): CHSM_InterruptOrBulkDataDone\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): CHSM_InterruptOrBulkDataDone\n", ADDRESS, ENDPOINT));
 
 				INT in = TrData->StateMachine.Urb->UrbBulkOrInterruptTransfer.TransferFlags & USBD_TRANSFER_DIRECTION_IN;
 
@@ -657,7 +660,7 @@ TR_RunTrSm(
 
 			if (TrData->TrStateMachine.Strikes >= 3)
 			{
-				KdPrint((__FUNCTION__ "(%d): TRSM_Init: three strikes, reporting error (%x, %x, %x, %x, %x, %x, %x)\n", TrData->TrStateMachine.Channel, regs->hcchar, regs->hcdma, regs->hcdmab, regs->hcint, regs->hcintmsk, regs->hcsplt, regs->hctsiz));
+				KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: three strikes, reporting error (%x, %x, %x, %x, %x, %x, %x)\n", ADDRESS, ENDPOINT, regs->hcchar, regs->hcdma, regs->hcdmab, regs->hcint, regs->hcintmsk, regs->hcsplt, regs->hctsiz));
 
 				if (TrData->StateMachine.Urb)
 				{
@@ -680,7 +683,7 @@ TR_RunTrSm(
 				return STATUS_TIMEOUT;
 			}
 
-			KdPrint((__FUNCTION__ "(%d): TRSM_Init\n", TrData->TrStateMachine.Channel));
+			KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init\n", ADDRESS, ENDPOINT));
 
 			int max = TrData->EndpointHandle->MaxPacketSize;
 			int ep = TrData->EndpointHandle->UsbEndpointDescriptor.bEndpointAddress & USB_ENDPOINT_ADDRESS_MASK;
@@ -732,7 +735,7 @@ TR_RunTrSm(
 			// TODO: set lspddev if low-speed
 			if (TrData->EndpointHandle->UsbDeviceHandle->UsbDeviceInfo.DeviceSpeed == UsbLowSpeed)
 			{
-				KdPrint((__FUNCTION__ "(%d): low speed device\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): low speed device\n", ADDRESS, ENDPOINT));
 
 				hcchar.b.lspddev = 1;
 			}
@@ -766,14 +769,14 @@ TR_RunTrSm(
 					}
 					else
 					{
-						KdPrint((__FUNCTION__ "(%d): no translator port?\n", TrData->TrStateMachine.Channel));
+						KdPrint((__FUNCTION__ "(%d, %d): no translator port?\n", ADDRESS, ENDPOINT));
 					}
 
 					TrData->TrStateMachine.DoSplit = 1;
 					TrData->TrStateMachine.NumPackets = 1;
 					TrData->TrStateMachine.MaxXferLen = max;
 
-					KdPrint((__FUNCTION__ "(%d): split transfer (hub %d, port %d)\n", TrData->TrStateMachine.Channel, translatorHubAddress, translatorPortNumber));
+					KdPrint((__FUNCTION__ "(%d, %d): split transfer (hub %d, port %d)\n", ADDRESS, ENDPOINT, translatorHubAddress, translatorPortNumber));
 
 					TrData->TrStateMachine.TtHub = translatorHubAddress;
 					TrData->TrStateMachine.TtPort = translatorPortNumber;
@@ -783,7 +786,7 @@ TR_RunTrSm(
 				}
 				else
 				{
-					KdPrint((__FUNCTION__ "(%d): TtHub is NULL?\n", TrData->TrStateMachine.Channel));
+					KdPrint((__FUNCTION__ "(%d, %d): TtHub is NULL?\n", ADDRESS, ENDPOINT));
 				}
 			}
 
@@ -792,7 +795,7 @@ TR_RunTrSm(
 		}
 		case TRSM_CheckFreePort:
 		{
-			KdPrint((__FUNCTION__ "(%d): TRSM_CheckFreePort", TrData->TrStateMachine.Channel));
+			KdPrint((__FUNCTION__ "(%d, %d): TRSM_CheckFreePort", ADDRESS, ENDPOINT));
 
 			controllerHandle = ControllerGetData(TrData->EndpointHandle->UsbDeviceHandle->UcxController);
 
@@ -804,7 +807,7 @@ TR_RunTrSm(
 					controllerHandle->ChTtPorts[i] == TrData->TrStateMachine.TtPort)
 				{
 					foundSelf = TRUE;
-					KdPrint((__FUNCTION__ "(%d): FoundSelf", TrData->TrStateMachine.Channel));
+					KdPrint((__FUNCTION__ "(%d, %d): FoundSelf", ADDRESS, ENDPOINT));
 				}
 			}
 
@@ -841,8 +844,8 @@ TR_RunTrSm(
 			hfnum_data_t hfnum;
 			hfnum.d32 = READ_REGISTER_ULONG((volatile ULONG*)&TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->hfnum);
 
-			KdPrint((__FUNCTION__ "(%d): TRSM_Transferring (done: %d, length: %d, split: %d, compsplit: %d, address: %d, frnum: %d, subfr: %d)\n",
-				TrData->TrStateMachine.Channel,
+			KdPrint((__FUNCTION__ "(%d, %d): TRSM_Transferring (done: %d, length: %d, split: %d, compsplit: %d, address: %d, frnum: %d, subfr: %d)\n",
+				ADDRESS, ENDPOINT,
 				TrData->TrStateMachine.Done,
 				TrData->TrStateMachine.Length,
 				TrData->TrStateMachine.DoSplit,
@@ -888,7 +891,7 @@ TR_RunTrSm(
 
 			if (TrData->TrStateMachine.CompleteSplit)
 			{
-				KdPrint((__FUNCTION__ "(%d): CompleteSplit: was %x\n", TrData->TrStateMachine.Channel, hcsplt.d32));
+				KdPrint((__FUNCTION__ "(%d, %d): CompleteSplit: was %x\n", ADDRESS, ENDPOINT, hcsplt.d32));
 
 				hcsplt.b.compsplt = 1;
 			}
@@ -990,7 +993,7 @@ TR_RunTrSm(
 		}
 		case TRSM_TransferWaiting:
 		{
-			KdPrint((__FUNCTION__ "(%d): TRSM_TransferWaiting\n", TrData->TrStateMachine.Channel));
+			KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferWaiting\n", ADDRESS, ENDPOINT));
 
 			int channel = TrData->TrStateMachine.Channel;
 			dwc_otg_hc_regs_t* regs = TrData->EndpointHandle->UsbDeviceHandle->ChannelRegs[channel];
@@ -1036,12 +1039,12 @@ TR_RunTrSm(
 			} 
 			else if (IsInterrupt)
 			{
-				KdPrint((__FUNCTION__ "(%d): TRSM_TransferWaiting: spurious interrupt\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferWaiting: spurious interrupt\n", ADDRESS, ENDPOINT));
 				return STATUS_PENDING;
 			}
 			else
 			{
-				KdPrint((__FUNCTION__ "(%d): TRSM_TransferWaiting: channel timeout, retry\n", TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferWaiting: channel timeout, retry\n", ADDRESS, ENDPOINT));
 
 				TrData->TrStateMachine.State = TRSM_Init;
 				TrData->TrStateMachine.Strikes++;
@@ -1069,12 +1072,12 @@ TR_RunTrSm(
 				return STATUS_TIMEOUT;*/
 			}
 
-			KdPrint((__FUNCTION__ "(%d): TRSM_TransferWaiting: not halted yet\n", TrData->TrStateMachine.Channel));
+			KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferWaiting: not halted yet\n", ADDRESS, ENDPOINT));
 			return STATUS_PENDING;
 		}
 		case TRSM_TransferHalted:
 		{
-			KdPrint((__FUNCTION__ "(%d): TRSM_TransferHalted\n", TrData->TrStateMachine.Channel));
+			KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferHalted\n", ADDRESS, ENDPOINT));
 
 			int channel = TrData->TrStateMachine.Channel;
 			dwc_otg_hc_regs_t* regs = TrData->EndpointHandle->UsbDeviceHandle->ChannelRegs[channel];
@@ -1103,7 +1106,7 @@ TR_RunTrSm(
 
 					if (((hfnum.b.frnum - TrData->TrStateMachine.SSplitFrameNum) & 0x3FFF) > 16)
 					{
-						KdPrint((__FUNCTION__ "(%d): Split NYET timeout, retry\n", TrData->TrStateMachine.Channel));
+						KdPrint((__FUNCTION__ "(%d, %d): Split NYET timeout, retry\n", ADDRESS, ENDPOINT));
 
 						TrData->TrStateMachine.State = TRSM_Init;
 						TrData->TrStateMachine.Strikes++;
@@ -1115,7 +1118,7 @@ TR_RunTrSm(
 				}
 				else
 				{
-					KdPrint((__FUNCTION__ "(%d): split complete?\n", TrData->TrStateMachine.Channel));
+					KdPrint((__FUNCTION__ "(%d, %d): split complete?\n", ADDRESS, ENDPOINT));
 
 					TrData->TrStateMachine.CompleteSplit = 0;
 
@@ -1126,7 +1129,7 @@ TR_RunTrSm(
 			{
 				if (hcint.b.ack)
 				{
-					KdPrint((__FUNCTION__ "(%d): Split ACK, complete it?\n", TrData->TrStateMachine.Channel));
+					KdPrint((__FUNCTION__ "(%d, %d): Split ACK, complete it?\n", ADDRESS, ENDPOINT));
 
 					hfnum_data_t hfnum;
 
@@ -1156,15 +1159,15 @@ TR_RunTrSm(
 			{
 				if (hcint.b.xfercomp)
 				{
-					KdPrint((__FUNCTION__ "(%d): Halted: XFERCOMP\n", TrData->TrStateMachine.Channel));
+					KdPrint((__FUNCTION__ "(%d, %d): Halted: XFERCOMP\n", ADDRESS, ENDPOINT));
 				}
 				else if (hcint.b.ack)
 				{
-					KdPrint((__FUNCTION__ "(%d): Halted: ACK\n", TrData->TrStateMachine.Channel));
+					KdPrint((__FUNCTION__ "(%d, %d): Halted: ACK\n", ADDRESS, ENDPOINT));
 				}
 				else if (hcint.b.nyet)
 				{
-					KdPrint((__FUNCTION__ "(%d): Halted: NYET\n", TrData->TrStateMachine.Channel));
+					KdPrint((__FUNCTION__ "(%d, %d): Halted: NYET\n", ADDRESS, ENDPOINT));
 				}
 
 				ULONG sub = hctsiz.b.xfersize;
@@ -1209,7 +1212,7 @@ TR_RunTrSm(
 			}
 			else if (hcint.b.nak || hcint.b.frmovrun)
 			{
-				KdPrint((__FUNCTION__ "(%d): Halted: NAK/FRMOVRUN - %08x\n", TrData->TrStateMachine.Channel, hcint.d32));
+				KdPrint((__FUNCTION__ "(%d, %d): Halted: NAK/FRMOVRUN - %08x\n", ADDRESS, ENDPOINT, hcint.d32));
 
 				/*if (hcint.b.nak && TrData->TrStateMachine.Done > 0)
 				{
@@ -1286,8 +1289,8 @@ TR_RunTrSm(
 					TrData->StateMachine.Urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
 				}
 
-				KdPrint((__FUNCTION__ "(%d): Halted: stall - int %08x siz %08x char %08x splt %08x\n",
-					TrData->TrStateMachine.Channel,
+				KdPrint((__FUNCTION__ "(%d, %d): Halted: stall - int %08x siz %08x char %08x splt %08x\n",
+					ADDRESS, ENDPOINT,
 					hcint.d32,
 					hctsiz.d32,
 					TrData->EndpointHandle->UsbDeviceHandle->ChannelRegs[TrData->StateMachine.Channel]->hcchar,
@@ -1313,7 +1316,7 @@ TR_RunTrSm(
 					TrData->StateMachine.Urb->UrbHeader.Status = USBD_STATUS_XACT_ERROR;
 				}
 
-				KdPrint((__FUNCTION__ "(%d): Halted: unknown error - %08x\n", TrData->TrStateMachine.Channel, hcint.d32));
+				KdPrint((__FUNCTION__ "(%d, %d): Halted: unknown error - %08x\n", ADDRESS, ENDPOINT, hcint.d32));
 
 				TrData->StateMachine.State = CHSM_Idle;
 
@@ -1333,7 +1336,7 @@ TR_RunTrSm(
 		}
 		case TRSM_Done:
 		{
-			KdPrint((__FUNCTION__ "(%d): TRSM_Done\n", TrData->TrStateMachine.Channel));
+			KdPrint((__FUNCTION__ "(%d, %d): TRSM_Done\n", ADDRESS, ENDPOINT));
 
 			int channel = TrData->TrStateMachine.Channel;
 			dwc_otg_hc_regs_t* regs = TrData->EndpointHandle->UsbDeviceHandle->ChannelRegs[channel];
@@ -2131,12 +2134,12 @@ RunSmDpc(
 	UNREFERENCED_PARAMETER(DeferredContext);
 	UNREFERENCED_PARAMETER(SystemArgument2);
 
-	PTR_DATA trData = (PTR_DATA)SystemArgument1;
+	PTR_DATA TrData = (PTR_DATA)SystemArgument1;
 
-	KdPrint((__FUNCTION__ "(%d): last state %d, next state %d\n", trData->TrStateMachine.Channel, trData->StateMachine.State, trData->NextStateMachine.State));
-	trData->StateMachine = trData->NextStateMachine;
+	KdPrint((__FUNCTION__ "(%d, %d): last state %d, next state %d\n", ADDRESS, ENDPOINT, TrData->StateMachine.State, TrData->NextStateMachine.State));
+	TrData->StateMachine = TrData->NextStateMachine;
 
-	TR_RunChSm(trData, 0);
+	TR_RunChSm(TrData, 0);
 }
 
 VOID

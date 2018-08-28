@@ -1362,7 +1362,7 @@ Controller_RunCHSM(
 )
 {
 	PTR_DATA TrData = (PTR_DATA)Context;
-	KdPrint((__FUNCTION__ ": Invoking channel %d SM from interrupt\n", TrData->TrStateMachine.Channel));
+	KdPrint((__FUNCTION__ ": Invoking SM for endpoint (%d, %d) from interrupt\n", ADDRESS, ENDPOINT));
 
 	TR_RunChSm(TrData, 1);
 }
@@ -2170,12 +2170,11 @@ Controller_ResumeCh(
 {
 	UNREFERENCED_PARAMETER(Timer);
 
-	PTR_DATA trData = *(PTR_DATA*)Context;
+	PTR_DATA TrData = *(PTR_DATA*)Context;
 
-	KdPrint((__FUNCTION__ ": resuming channel %d SM from timer\n", trData->TrStateMachine.Channel));
 
-	trData->NextStateMachine = trData->StateMachine;
-	Controller_InvokeTrSm(trData->EndpointHandle->UsbDeviceHandle->UcxController, trData);
+	TrData->NextStateMachine = TrData->StateMachine;
+	Controller_InvokeTrSm(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData);
 }
 
 VOID

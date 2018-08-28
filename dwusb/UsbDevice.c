@@ -2172,6 +2172,7 @@ Controller_ResumeCh(
 
 	PTR_DATA TrData = *(PTR_DATA*)Context;
 
+	KdPrint((__FUNCTION__ ": Invoking SM for endpoint (%d, %d) from timer\n", ADDRESS, ENDPOINT));
 
 	TrData->NextStateMachine = TrData->StateMachine;
 	Controller_InvokeTrSm(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData);

@@ -1750,10 +1750,10 @@ ControllerCreate(
 
 	PDEVICE_CONTEXT ctx = DeviceGetContext(WdfDevice);
 
-	for (int i = 0; i < NUM_CHANNELS; i++)
+	/*for (int i = 0; i < NUM_CHANNELS; i++)
 	{
 		controllerData->ChResumeTimers[i] = ExAllocateTimer(Controller_ResumeCh, &controllerData->ChResumeContexts[i], EX_TIMER_HIGH_RESOLUTION);
-	}
+	}*/
 
 	LARGE_INTEGER coreBase;
 	coreBase.QuadPart = ctx->MemoryBase.QuadPart + 0x0;

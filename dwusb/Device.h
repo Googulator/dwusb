@@ -79,12 +79,6 @@ typedef struct _CONTROLLER_DATA {
 	BOOLEAN SmDpcInited;
 	KDPC SmDpc;
 
-	BOOLEAN ChSmDpcInited[NUM_CHANNELS];
-	KDPC ChSmDpc[NUM_CHANNELS];
-
-	PEX_TIMER ChResumeTimers[NUM_CHANNELS];
-	PVOID ChResumeContexts[NUM_CHANNELS];
-
 	INT ChTtHubs[NUM_CHANNELS];
 	INT ChTtPorts[NUM_CHANNELS];
 
@@ -92,7 +86,7 @@ typedef struct _CONTROLLER_DATA {
 
 	UCXROOTHUB RootHub;
 
-	volatile char ChannelMask;
+	volatile long ChannelMask;
 	WDFSPINLOCK ChannelMaskLock;
 } CONTROLLER_DATA, *PCONTROLLER_DATA;
 

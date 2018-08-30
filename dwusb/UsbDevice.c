@@ -681,6 +681,7 @@ TR_RunTrSm(
 					WdfRequestComplete(TrData->StateMachine.Request, status);
 					return status;
 				}
+				TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
 				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, channel, Controller_RunCHSM, TrData);
 				TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = channel;
 				TrData->TrStateMachine.Strikes = 0;
@@ -691,7 +692,7 @@ TR_RunTrSm(
 			if (TrData->TrStateMachine.Strikes >= 3)
 			{
 				KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: three strikes, reporting error (%x, %x, %x, %x, %x, %x, %x)\n", ADDRESS, ENDPOINT, regs->hcchar, regs->hcdma, regs->hcdmab, regs->hcint, regs->hcintmsk, regs->hcsplt, regs->hctsiz));
-				KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: leaking channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
+				KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: releasing channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
 
 				if (TrData->StateMachine.Urb)
 				{
@@ -706,9 +707,9 @@ TR_RunTrSm(
 
 				controllerHandle->ChTrDatas[TrData->TrStateMachine.Channel] = NULL;
 
-				// intentionally leak this channel so it doesn't get assigned to any other transaction, as it's broken beyond recovery at this point
-				// FIXME figure out a way to reset it and return it to the pool
-				//Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel);
+				TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
+				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, channel, Controller_RunCHSM, TrData);
+				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel);
 				TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = -1;
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_TIMEOUT);
 
@@ -716,6 +717,71 @@ TR_RunTrSm(
 			}
 
 			KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: using channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
+
+			KeMemoryBarrier();
+			_DataSynchronizationBarrier();
+
+			hcchar_data_t hcchar;
+			hcchar.d32 = regs->hcchar;
+			hcchar.b.chen = 0;
+			hcchar.b.chdis = 1;
+			hcchar.b.epdir = 0;
+
+			_DataSynchronizationBarrier();
+
+			regs->hcchar = hcchar.d32;
+
+			KeMemoryBarrier();
+			_DataSynchronizationBarrier();
+
+			hcchar.d32 = regs->hcchar;
+			hcchar.b.chen = 1;
+			hcchar.b.chdis = 1;
+			hcchar.b.epdir = 0;
+
+			_DataSynchronizationBarrier();
+
+			regs->hcchar = hcchar.d32;
+			LARGE_INTEGER delay;
+			delay.QuadPart = 10; // times 100 nanoseconds == 1 us
+
+			for (int i = 0; i < 1000; i++) {
+				KeMemoryBarrier();
+				_DataSynchronizationBarrier();
+
+				hcchar.d32 = regs->hcchar;
+				if (!hcchar.b.chen)
+					break;
+
+				KeDelayExecutionThread(KernelMode, FALSE, &delay);
+			}
+
+			if (hcchar.b.chen) {
+				KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: channel reset failed, abandoning channel %d\n", ADDRESS, ENDPOINT, channel));
+
+				controllerHandle = ControllerGetData(TrData->EndpointHandle->UsbDeviceHandle->UcxController);
+				controllerHandle->ChTtHubs[TrData->TrStateMachine.Channel] = 0;
+				controllerHandle->ChTtPorts[TrData->TrStateMachine.Channel] = 0;
+
+				controllerHandle->ChTrDatas[TrData->TrStateMachine.Channel] = NULL;
+				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, channel, NULL, NULL);
+				// intentionally leak this channel so we don't run into it again
+
+				NTSTATUS status = Controller_AllocateChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, &channel);
+				if (!NT_SUCCESS(status)) {
+					KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: out of channels, reporting error\n", ADDRESS, ENDPOINT));
+					if (TrData->StateMachine.Urb)
+					{
+						TrData->StateMachine.Urb->UrbHeader.Status = USBD_STATUS_XACT_ERROR;
+					}
+					WdfRequestComplete(TrData->StateMachine.Request, STATUS_UNSUCCESSFUL);
+					return STATUS_UNSUCCESSFUL;
+				}
+				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, channel, Controller_RunCHSM, TrData);
+				TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = channel;
+
+				regs = TrData->EndpointHandle->UsbDeviceHandle->ChannelRegs[channel];
+			}
 
 			int max = TrData->EndpointHandle->MaxPacketSize;
 			int ep = TrData->EndpointHandle->UsbEndpointDescriptor.bEndpointAddress & USB_ENDPOINT_ADDRESS_MASK;
@@ -740,7 +806,6 @@ TR_RunTrSm(
 			controllerHandle = ControllerGetData(TrData->EndpointHandle->UsbDeviceHandle->UcxController);
 			controllerHandle->ChTrDatas[channel] = TrData;
 
-			hcchar_data_t hcchar;
 			hcchar.d32 = 0;
 			hcchar.b.devaddr = devnum;
 			hcchar.b.epnum = ep;
@@ -873,7 +938,9 @@ TR_RunTrSm(
 			controllerHandle->ChTtPorts[TrData->TrStateMachine.Channel] = 0;
 
 			controllerHandle->ChTrDatas[TrData->TrStateMachine.Channel] = NULL;
+			Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel, NULL, NULL);
 			KdPrint((__FUNCTION__ "(%d, %d): TRSM_CheckFreePort: releasing channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
+			TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
 			Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel);
 			TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = -1;
 			return STATUS_DEVICE_ALREADY_ATTACHED;
@@ -1084,7 +1151,7 @@ TR_RunTrSm(
 			}
 			else
 			{
-				KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferWaiting: channel timeout, retry\n", ADDRESS, ENDPOINT));
+				KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferWaiting: channel timeout, will attempt channel reset\n", ADDRESS, ENDPOINT));
 
 				TrData->TrStateMachine.State = TRSM_Init;
 				TrData->TrStateMachine.Strikes++;
@@ -1107,6 +1174,8 @@ TR_RunTrSm(
 				controllerHandle->ChTrDatas[channel] = NULL;
 
 				KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferWaiting: releasing channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
+				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel, NULL, NULL);
+				TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
 				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_TIMEOUT);
 
@@ -1306,7 +1375,9 @@ TR_RunTrSm(
 
 					controllerHandle->ChTrDatas[TrData->TrStateMachine.Channel] = NULL;
 					KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferHalted: releasing channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
-					Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
+					TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
+					Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel, NULL, NULL);
+					Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel);
 					TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = -1;
 					WdfRequestComplete(TrData->StateMachine.Request, STATUS_TIMEOUT);
 
@@ -1326,6 +1397,8 @@ TR_RunTrSm(
 
 				controllerHandle->ChTrDatas[TrData->TrStateMachine.Channel] = NULL;
 				KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferHalted: releasing channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
+				TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
+				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel, NULL, NULL);
 				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 				TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = -1;
 
@@ -1366,6 +1439,8 @@ TR_RunTrSm(
 				controllerHandle->ChTrDatas[channel] = NULL;
 
 				KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferHalted: releasing channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
+				TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
+				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel, NULL, NULL);
 				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 				TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = -1;
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_UNSUCCESSFUL);
@@ -1390,6 +1465,8 @@ TR_RunTrSm(
 				controllerHandle->ChTrDatas[channel] = NULL;
 
 				KdPrint((__FUNCTION__ "(%d, %d): TRSM_TransferHalted: releasing channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
+				TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
+				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel, NULL, NULL);
 				Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 				TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = -1;
 				WdfRequestComplete(TrData->StateMachine.Request, STATUS_UNSUCCESSFUL);
@@ -1418,6 +1495,8 @@ TR_RunTrSm(
 			controllerHandle->ChTtPorts[channel] = 0;
 
 			KdPrint((__FUNCTION__ "(%d, %d): TRSM_Done: releasing channel %d\n", ADDRESS, ENDPOINT, TrData->TrStateMachine.Channel));
+			TrData->EndpointHandle->UsbDeviceHandle->HostGlobalRegs->haintmsk &= ~(1 << TrData->TrStateMachine.Channel);
+			Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->TrStateMachine.Channel, NULL, NULL);
 			Controller_ReleaseChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, TrData->StateMachine.Channel);
 			TrData->StateMachine.Channel = TrData->TrStateMachine.Channel = -1;
 

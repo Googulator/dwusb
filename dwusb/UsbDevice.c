@@ -313,6 +313,7 @@ TR_RunChSm(
 				{
 					TrData->StateMachine.State = CHSM_ControlStatus;
 				}
+				IsInterrupt = 0;
 				break;
 			case CHSM_ControlData:
 			{
@@ -357,6 +358,7 @@ TR_RunChSm(
 				KdPrint((__FUNCTION__ "(%d, %d): CHSM_ControlDataDone\n", ADDRESS, ENDPOINT));
 
 				TrData->StateMachine.State = CHSM_ControlStatus;
+				IsInterrupt = 0;
 				break;
 			case CHSM_ControlStatus:
 			{
@@ -462,6 +464,7 @@ TR_RunChSm(
 				KdPrint((__FUNCTION__ "(%d, %d): CHSM_AddressSetupDone\n", ADDRESS, ENDPOINT));
 
 				TrData->StateMachine.State = CHSM_AddressStatus;
+				IsInterrupt = 0;
 				break;
 			case CHSM_AddressStatus:
 				KdPrint((__FUNCTION__ "(%d, %d): CHSM_AddressStatus\n", ADDRESS, ENDPOINT));
@@ -617,6 +620,10 @@ ReviveTrSm(
 
 INT TR_PollingInterval(PTR_DATA TrData)
 {
+	int interval = TrData->EndpointHandle->UsbEndpointDescriptor.bInterval;
+	if (!interval)
+		interval = 1;
+
 	switch (TrData->EndpointHandle->Type)
 	{
 	case EndpointType_Control:
@@ -624,11 +631,11 @@ INT TR_PollingInterval(PTR_DATA TrData)
 		switch (TrData->EndpointHandle->UsbDeviceHandle->UsbDeviceInfo.DeviceSpeed)
 		{
 		case UsbLowSpeed:
-			return 8000 * max((TrData->EndpointHandle->UsbEndpointDescriptor.bInterval + 7) / 8, 1);
+			return 8000 * max((interval + 7) / 8, 1);
 		case UsbFullSpeed:
-			return 1000 * max(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 1);
+			return 1000 * max(interval, 1);
 		case UsbHighSpeed:
-			return 125 * (1 << (min(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 16) - 1));
+			return 125 * (1 << (min(interval, 16) - 1));
 		}
 		break;
 	case EndpointType_Bulk:
@@ -636,9 +643,9 @@ INT TR_PollingInterval(PTR_DATA TrData)
 		{
 		case UsbLowSpeed: // forbidden by spec; fall through to full-speed case
 		case UsbFullSpeed:
-			return 1000 * max(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 1);
+			return 1000 * max(interval, 1);
 		case UsbHighSpeed:
-			return 125 * max(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 1);
+			return 125 * max(interval, 1);
 		}
 		break;
 	case EndpointType_Isoch:
@@ -646,9 +653,9 @@ INT TR_PollingInterval(PTR_DATA TrData)
 		{
 		case UsbLowSpeed: // forbidden by spec; fall through to full-speed case
 		case UsbFullSpeed:
-			return 1000 * (1 << (min(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 16) - 1));
+			return 1000 * (1 << (min(interval, 16) - 1));
 		case UsbHighSpeed:
-			return 125 * (1 << (min(TrData->EndpointHandle->UsbEndpointDescriptor.bInterval, 16) - 1));
+			return 125 * (1 << (min(interval, 16) - 1));
 		}
 		break;
 	}
@@ -745,19 +752,22 @@ TR_RunTrSm(
 			LARGE_INTEGER delay;
 			delay.QuadPart = 10; // times 100 nanoseconds == 1 us
 
-			for (int i = 0; i < 1000; i++) {
+			for (int i = 0; i < 10000; i++) { // dwc_otg has 1000, but that's not enough safety margin; I've seen channels reset only after 300+ iterations
 				KeMemoryBarrier();
 				_DataSynchronizationBarrier();
 
 				hcchar.d32 = regs->hcchar;
-				if (!hcchar.b.chen)
+				if (!hcchar.b.chen) {
+					KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: channel reset took %d iterations\n", ADDRESS, ENDPOINT, i));
 					break;
+				}
 
 				KeDelayExecutionThread(KernelMode, FALSE, &delay);
 			}
 
 			if (hcchar.b.chen) {
 				KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: channel reset failed, abandoning channel %d\n", ADDRESS, ENDPOINT, channel));
+				KdPrint((__FUNCTION__ "(%d, %d): TRSM_Init: registers at failure: %x, %x, %x, %x, %x, %x, %x\n", ADDRESS, ENDPOINT, regs->hcchar, regs->hcdma, regs->hcdmab, regs->hcint, regs->hcintmsk, regs->hcsplt, regs->hctsiz));
 
 				controllerHandle = ControllerGetData(TrData->EndpointHandle->UsbDeviceHandle->UcxController);
 				controllerHandle->ChTtHubs[TrData->TrStateMachine.Channel] = 0;
@@ -766,6 +776,7 @@ TR_RunTrSm(
 				controllerHandle->ChTrDatas[TrData->TrStateMachine.Channel] = NULL;
 				Controller_SetChannelCallback(TrData->EndpointHandle->UsbDeviceHandle->UcxController, channel, NULL, NULL);
 				// intentionally leak this channel so we don't run into it again
+				controllerHandle->DeadChannelMask |= (1 << channel);
 
 				NTSTATUS status = Controller_AllocateChannel(TrData->EndpointHandle->UsbDeviceHandle->UcxController, &channel);
 				if (!NT_SUCCESS(status)) {
@@ -1048,8 +1059,8 @@ TR_RunTrSm(
 
 			hcintmsk_data_t hcintmsk;
 			hcintmsk.d32 = 0;
-			//hcintmsk.b.chhltd = 1;
-			hcintmsk.b.ack = 1;
+			hcintmsk.b.chhltd = 1;
+			/*hcintmsk.b.ack = 1;
 			hcintmsk.b.bblerr = 1;
 			hcintmsk.b.datatglerr = 1;
 			hcintmsk.b.frmovrun = 1;
@@ -1057,7 +1068,7 @@ TR_RunTrSm(
 			hcintmsk.b.nyet = 1;
 			hcintmsk.b.stall = 1;
 			hcintmsk.b.xacterr = 1;
-			hcintmsk.b.xfercompl = 1;
+			hcintmsk.b.xfercompl = 1;*/
 
 			_DataSynchronizationBarrier();
 
@@ -1109,8 +1120,8 @@ TR_RunTrSm(
 			hcint_data_t hcint;
 			hcint_data_t hcintref;
 			hcintref.d32 = 0;
-			//hcintref.b.chhltd = 1;
-			hcintref.b.ack = 1;
+			hcintref.b.chhltd = 1;
+			/*hcintref.b.ack = 1;
 			hcintref.b.bblerr = 1;
 			hcintref.b.datatglerr = 1;
 			hcintref.b.frmovrun = 1;
@@ -1118,7 +1129,7 @@ TR_RunTrSm(
 			hcintref.b.nyet = 1;
 			hcintref.b.stall = 1;
 			hcintref.b.xacterr = 1;
-			hcintref.b.xfercomp = 1;
+			hcintref.b.xfercomp = 1;*/
 
 			KeMemoryBarrier();
 			_DataSynchronizationBarrier();
@@ -1139,7 +1150,7 @@ TR_RunTrSm(
 
 				ExSetTimer(
 					TrData->EndpointHandle->EpResumeTimer,
-					WDF_REL_TIMEOUT_IN_MS(20 << TrData->TrStateMachine.Strikes),
+					WDF_REL_TIMEOUT_IN_MS(5000 /*20 << TrData->TrStateMachine.Strikes*/),
 					0,
 					NULL
 				);
@@ -1420,7 +1431,7 @@ TR_RunTrSm(
 			{
 				if (TrData->StateMachine.Urb)
 				{
-					TrData->StateMachine.Urb->UrbHeader.Status = USBD_STATUS_ENDPOINT_HALTED;
+					TrData->StateMachine.Urb->UrbHeader.Status = USBD_STATUS_STALL_PID;
 				}
 
 				KdPrint((__FUNCTION__ "(%d, %d): Halted: stall - int %08x siz %08x char %08x splt %08x\n",
@@ -1606,7 +1617,7 @@ Endpoint_CreateIoQueue(
 	PENDPOINT_DATA				Endpoint
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	WDF_OBJECT_ATTRIBUTES   wdfAttributes;
 	WDF_IO_QUEUE_CONFIG     wdfIoQueueConfig;
@@ -1673,7 +1684,7 @@ Endpoint_Create(
 
 	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&wdfAttributes, ENDPOINT_DATA);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	status = UcxEndpointCreate(UcxUsbDevice,
 		&UcxEndpointInit,
@@ -1755,7 +1766,7 @@ Endpoint_WdfEvtPurgeComplete(
 {
 	UCXENDPOINT ucxEndpoint = WdfContext;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(WdfQueue);
 
@@ -1770,7 +1781,7 @@ Endpoint_WdfEvtAbortComplete(
 {
 	UCXENDPOINT ucxEndpoint = WdfContext;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(WdfQueue);
 
@@ -1785,7 +1796,7 @@ Endpoint_UcxEvtEndpointStart(
 {
 	PENDPOINT_DATA          endpointData;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxController);
 
@@ -1802,7 +1813,7 @@ Endpoint_UcxEvtEndpointAbort(
 {
 	PENDPOINT_DATA          endpointData;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxController);
 
@@ -1819,7 +1830,7 @@ Endpoint_UcxEvtEndpointPurge(
 {
 	PENDPOINT_DATA          endpointData;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxController);
 
@@ -1835,7 +1846,7 @@ Endpoint_UcxEvtEndpointReset(
 	WDFREQUEST      WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxController);
 	UNREFERENCED_PARAMETER(UcxEndpoint);
@@ -1855,7 +1866,7 @@ Endpoint_UcxEvtDefaultEndpointUpdate(
 	PDEFAULT_ENDPOINT_UPDATE    defaultEndpointUpdate;
 	WDF_REQUEST_PARAMETERS      wdfRequestParams;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxController);
 
@@ -1878,7 +1889,7 @@ Endpoint_UcxEvtEndpointStaticStreamsAdd(
 	PUCXSSTREAMS_INIT   UcxStaticStreamsInit
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxEndpoint);
 	UNREFERENCED_PARAMETER(UcxStaticStreamsInit);
@@ -1894,7 +1905,7 @@ Endpoint_UcxEvtEndpointStaticStreamsEnable(
 	WDFREQUEST  WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxEndpoint);
 	UNREFERENCED_PARAMETER(UcxStaticStreams);
@@ -1910,7 +1921,7 @@ Endpoint_UcxEvtEndpointStaticStreamsDisable(
 	WDFREQUEST  WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxEndpoint);
 	UNREFERENCED_PARAMETER(UcxStaticStreams);
@@ -1925,7 +1936,7 @@ Endpoint_UcxEvtEndpointEnableForwardProgress(
 	ULONG           MaximumTransferSize
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxEndpoint);
 	UNREFERENCED_PARAMETER(MaximumTransferSize);
@@ -1962,7 +1973,7 @@ Routine Description:
 
     PAGED_CODE();
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
     __try {
 
@@ -2032,7 +2043,7 @@ Routine Description:
 
     PAGED_CODE();
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
     __try {
 
@@ -2068,7 +2079,7 @@ UsbDevice_UcxEvtHubInfo(
 	WDFREQUEST      WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
 	PUSBDEVICE_HUB_INFO     hubInfo;
@@ -2089,7 +2100,7 @@ UsbDevice_UcxEvtUpdate(
 	WDFREQUEST      WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
 	PUSBDEVICE_UPDATE usbDeviceUpdate;
@@ -2112,7 +2123,7 @@ UsbDevice_UcxEvtReset(
 	WDFREQUEST      WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
 	PUSBDEVICE_RESET usbDeviceReset;
@@ -2137,7 +2148,7 @@ UsbDevice_UcxEvtEnable(
 	WDFREQUEST      WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
 	PUSBDEVICE_ENABLE usbDeviceEnable;
@@ -2162,7 +2173,7 @@ UsbDevice_UcxEvtDisable(
 	WDFREQUEST      WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
 	PUSBDEVICE_DISABLE usbDeviceDisable;
@@ -2187,7 +2198,7 @@ UsbDevice_UcxEvtEndpointsConfigure(
 	WDFREQUEST      WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
 	PENDPOINTS_CONFIGURE endpointsConfigure;
@@ -2341,7 +2352,7 @@ UsbDevice_UcxEvtAddress(
 	WDFREQUEST      WdfRequest
 )
 {
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	WDF_REQUEST_PARAMETERS  wdfRequestParams;
 	PUSBDEVICE_ADDRESS usbDeviceAddress;
@@ -2397,7 +2408,7 @@ UsbDevice_UcxEvtDeviceAdd(
 )
 {
 	// TODO: implement
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	NTSTATUS						status;
 	UCX_USBDEVICE_EVENT_CALLBACKS   ucxUsbDeviceEventCallbacks;

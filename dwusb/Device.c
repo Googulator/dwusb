@@ -111,7 +111,7 @@ The request completion status in the WdfRequest.
 	PROOTHUB_INFO           roothubInfo;
 	NTSTATUS                status = STATUS_SUCCESS;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	__try {
 
@@ -185,7 +185,7 @@ The request completion status in the WdfRequest.
 	NTSTATUS                status = STATUS_SUCCESS;
 
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	__try {
 
@@ -284,7 +284,7 @@ The request completion status in the WdfRequest.
 	USHORT                   dstPortIndex;
 	NTSTATUS                 status = STATUS_SUCCESS;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	__try {
 
@@ -342,7 +342,7 @@ RootHub_UcxEvtInterruptTransfer(
 	ULONG                   transferBufferLength;
 	PVOID                   transferBuffer;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UNREFERENCED_PARAMETER(UcxRootHub);
 
@@ -416,7 +416,7 @@ Return Value:
     PWDF_USB_CONTROL_SETUP_PACKET   setupPacket;
     ULONG                           featureSelector;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
     UNREFERENCED_PARAMETER(UcxRootHub);
 
@@ -507,7 +507,7 @@ Return Value:
     ULONG                           featureSpecificValue;
 	hprt0_data_t hprt0;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
     __try {
 
@@ -701,7 +701,7 @@ Return Value:
     ULONG                           featureSelector;
     ULONG                           featureSpecificValue;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	hprt0_data_t					hprt0;
 
@@ -864,7 +864,7 @@ Return Value:
     PWDF_USB_CONTROL_SETUP_PACKET   setupPacket;
     ULONG                           portNumber;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
     __try {
 
@@ -940,7 +940,7 @@ Return Value:
 
     UNREFERENCED_PARAMETER(UcxRootHub);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
     __try {
 
@@ -1004,7 +1004,7 @@ Return Value:
 
     UNREFERENCED_PARAMETER(UcxRootHub);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
     __try {
 
@@ -1084,7 +1084,7 @@ Return Value:
     ULONG                           packetLength;
     PUSB_PORT_STATUS_AND_CHANGE     pusbPortStatusChange;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	hprt0_data_t hprt0;
 
@@ -1191,7 +1191,7 @@ RootHub_ResetComplete(
 {
 	UNREFERENCED_PARAMETER(Timer);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	KeMemoryBarrier();
 
@@ -1229,7 +1229,7 @@ RootHub_ResetSafeComplete(
 {
 	UNREFERENCED_PARAMETER(Timer);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	PROOTHUB_DATA rootHub = (PROOTHUB_DATA)Context;
 
@@ -1263,7 +1263,7 @@ RootHub_ResumeComplete(
 {
 	UNREFERENCED_PARAMETER(Timer);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	PROOTHUB_DATA rootHub = (PROOTHUB_DATA)Context;
 
@@ -1301,7 +1301,7 @@ RootHubCreate(
 
 	ctx = DeviceGetContext(WdfDevice);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	PAGED_CODE();
 
@@ -1400,7 +1400,7 @@ Controller_UcxEvtGetCurrentFrameNumber(
 	PCONTROLLER_DATA    controllerData;
 	controllerData = ControllerGetData(UcxController);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	KeMemoryBarrier();
 	_DataSynchronizationBarrier();
@@ -1426,7 +1426,7 @@ Controller_Reset(
 	PCONTROLLER_DATA    controllerData;
 	grstctl_t grst;
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	controllerData = ControllerGetData(UcxController);
 
@@ -1469,6 +1469,11 @@ Controller_Reset(
 	}
 }
 
+NTSTATUS
+ControllerInit(
+	UCXCONTROLLER ucxController
+);
+
 VOID
 Controller_UcxEvtReset(
 	UCXCONTROLLER   UcxController
@@ -1476,7 +1481,14 @@ Controller_UcxEvtReset(
 {
 	UCX_CONTROLLER_RESET_COMPLETE_INFO  ucxControllerResetCompleteInfo;
 
-	Controller_Reset(UcxController);
+	ControllerInit(UcxController);
+	RootHubInit(UcxController);
+
+	PCONTROLLER_DATA ControllerData = ControllerGetData(UcxController);
+	WdfSpinLockAcquire(ControllerData->ChannelMaskLock);
+	ControllerData->ChannelMask &= ~(ControllerData->DeadChannelMask);
+	ControllerData->DeadChannelMask = 0;
+	WdfSpinLockRelease(ControllerData->ChannelMaskLock);
 
 	UCX_CONTROLLER_RESET_COMPLETE_INFO_INIT(&ucxControllerResetCompleteInfo,
 		UcxControllerStateLost,
@@ -1501,7 +1513,7 @@ Controller_UcxEvtQueryUsbCapability(
 	UNREFERENCED_PARAMETER(OutputBufferLength);
 	UNREFERENCED_PARAMETER(OutputBuffer);
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	*ResultLength = 0;
 
@@ -1610,7 +1622,7 @@ VOID OnInterruptWorkItem(WDFINTERRUPT WdfInterrupt, WDFOBJECT WdfDevice)
 
 	gintsts.d32 = context->ControllerHandle->CoreGlobalRegs->gintsts;
 
-	//KdPrint((__FUNCTION__ "\n"));
+	//KdPrint((__FUNCTION__ ": entry\n"));
 
 	if (gintsts.b.hcintr)
 	{
@@ -1712,7 +1724,7 @@ ControllerCreate(
 {
 	PAGED_CODE();
 
-	KdPrint((__FUNCTION__ "\n"));
+	KdPrint((__FUNCTION__ ": entry\n"));
 
 	UCX_CONTROLLER_CONFIG                   ucxControllerConfig;
 	WDF_OBJECT_ATTRIBUTES                   wdfAttributes;
@@ -2018,7 +2030,7 @@ ControllerInit(
 	controllerData->CoreGlobalRegs->gintmsk = gintmsk.d32;
 
 	controllerData->HostGlobalRegs->haintmsk = 0x1;
-
+#if 0
 	HANDLE threadHandle;
 
 	status = PsCreateSystemThread(&threadHandle, SYNCHRONIZE, NULL, NULL, NULL, DeviceSystemThread, controllerData);
@@ -2029,7 +2041,7 @@ ControllerInit(
 	}
 
 	ZwClose(threadHandle);
-
+#endif
 	return status;
 }
 

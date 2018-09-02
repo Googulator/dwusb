@@ -87,6 +87,7 @@ typedef struct _CONTROLLER_DATA {
 	UCXROOTHUB RootHub;
 
 	volatile long ChannelMask;
+	volatile long DeadChannelMask;
 	WDFSPINLOCK ChannelMaskLock;
 } CONTROLLER_DATA, *PCONTROLLER_DATA;
 

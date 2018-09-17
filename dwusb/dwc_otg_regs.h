@@ -228,7 +228,6 @@ typedef union gotgint_data {
 		unsigned mvic : 1;
 
 		unsigned reserved31_21 : 11;
-
 	} b;
 } gotgint_data_t;
 
@@ -1852,7 +1851,6 @@ typedef struct dwc_otg_dev_if {
 	uint32_t spd;
 	/** Isoc ep pointer on which incomplete happens */
 	void *isoc_ep;
-
 } dwc_otg_dev_if_t;
 #endif
 
@@ -2430,7 +2428,6 @@ typedef struct dwc_otg_host_if {
 	uint8_t perio_eps_supported;
 	/** Periodic Tx FIFO Size (Only 1 host periodic Tx FIFO) */
 	uint16_t perio_tx_fifo_size;
-
 } dwc_otg_host_if_t;
 #endif
 

@@ -35,7 +35,6 @@ typedef struct _DEVICE_CONTEXT
 	PHYSICAL_ADDRESS MemoryBase;
 	WDFINTERRUPT Interrupt;
 
-
 } DEVICE_CONTEXT, *PDEVICE_CONTEXT;
 
 //

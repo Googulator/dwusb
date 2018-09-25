@@ -1739,8 +1739,13 @@ ControllerCreate(
 	ucxControllerConfig.EvtControllerGetCurrentFrameNumber = Controller_UcxEvtGetCurrentFrameNumber;
 	ucxControllerConfig.EvtControllerReset = Controller_UcxEvtReset;
 	ucxControllerConfig.EvtControllerQueryUsbCapability = Controller_UcxEvtQueryUsbCapability;
+
+	/* This is currently broken in UCX and causes Windows to load no drivers for the root hub */
+	/* UCX chokes on the ACPI vendor IDs having 3 characters instead of 4 (allowed by ACPI spec) */
+#if UCX_CONTROLLER_CONFIG_SET_ACPI_INFO_DOES_NOT_SUCK
 	ucxControllerConfig.ParentBusType = UcxControllerParentBusTypeAcpi;
 	UCX_CONTROLLER_CONFIG_SET_ACPI_INFO(&ucxControllerConfig, "BCM", "2848", "0");
+#endif
 
 	status = UcxControllerCreate(WdfDevice,
 		&ucxControllerConfig,

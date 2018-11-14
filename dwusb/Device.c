@@ -1934,7 +1934,7 @@ ControllerInit(
 	gusbcfg_data_t gusbcfg;
 	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
 
-	gusbcfg.b.ulpi_ext_vbus_drv = 0;// 1;
+	gusbcfg.b.ulpi_ext_vbus_drv = 1;
 	gusbcfg.b.term_sel_dl_pulse = 0;
 
 	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
@@ -1948,7 +1948,7 @@ ControllerInit(
 	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
 
 	gusbcfg.b.ddrsel = 0;
-	gusbcfg.b.ulpi_utmi_sel = 1;
+	gusbcfg.b.ulpi_utmi_sel = 1; // UTMI
 	gusbcfg.b.phyif = 0;
 
 	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
@@ -1963,12 +1963,11 @@ ControllerInit(
 
 	gusbcfg.b.ulpi_fsls = 0;
 	gusbcfg.b.ulpi_clk_sus_m = 0;
-	gusbcfg.b.hnpcap = 1;
-	gusbcfg.b.srpcap = 1;
+	//gusbcfg.b.hnpcap = 1;
+	//gusbcfg.b.srpcap = 1;
 
 	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
 
-	*controllerData->PcgcCtl = 0;
 	KeMemoryBarrier();
 
 	gahbcfg_data_t gahbcfg;
@@ -2000,22 +1999,105 @@ ControllerInit(
 
 	}
 
-	gahbcfg.b.glblintrmsk = 1;
+	gahbcfg.b.glblintrmsk = 1; // UEFI driver has this disabled as it uses polling instead of interrupts - we need this enabled
 	gahbcfg.b.dmaenable = 1;
 
 	controllerData->CoreGlobalRegs->gahbcfg = gahbcfg.d32;
+
+	_DataSynchronizationBarrier();
+	KeMemoryBarrier();
+
+	gusbcfg.d32 = controllerData->CoreGlobalRegs->gusbcfg;
+
+	gusbcfg.b.hnpcap = 0;
+	gusbcfg.b.srpcap = 0;
+
+	controllerData->CoreGlobalRegs->gusbcfg = gusbcfg.d32;
+
+	_DataSynchronizationBarrier();
+	KeMemoryBarrier();
+
+	*controllerData->PcgcCtl = 0;
+	KeMemoryBarrier();
 
 	hcfg_data_t hcfg;
 	hcfg.d32 = controllerData->HostGlobalRegs->hcfg;
 	hcfg.b.fslspclksel = DWC_HCFG_30_60_MHZ;
 	controllerData->HostGlobalRegs->hcfg = hcfg.d32;
 
+	controllerData->CoreGlobalRegs->grxfsiz = 532; // magic constant from UEFI
+	_DataSynchronizationBarrier();
+	KeMemoryBarrier();
+
+	fifosize_data_t gnptxfsiz, hptxfsiz;
+	gnptxfsiz.d32 = 0;
+	gnptxfsiz.b.depth = 0x100;
+	gnptxfsiz.b.startaddr = 532;
+
+	controllerData->CoreGlobalRegs->gnptxfsiz = gnptxfsiz.d32;
+	_DataSynchronizationBarrier();
+	KeMemoryBarrier();
+
+	hptxfsiz.d32 = 0;
+	hptxfsiz.b.depth = 0x200;
+	hptxfsiz.b.startaddr = 532;
+
+	controllerData->CoreGlobalRegs->hptxfsiz = hptxfsiz.d32;
+	_DataSynchronizationBarrier();
+	KeMemoryBarrier();
+
+
+
 	gotgctl_data_t gotgctl;
 	gotgctl.d32 = controllerData->CoreGlobalRegs->gotgctl;
 
-	gotgctl.b.hstsethnpen = 1;// 0;
+	gotgctl.b.hstsethnpen = 0;
 
 	controllerData->CoreGlobalRegs->gotgctl = gotgctl.d32;
+	_DataSynchronizationBarrier();
+	KeMemoryBarrier();
+
+	grstctl_t grst;
+	grst.d32 = controllerData->CoreGlobalRegs->grstctl;
+
+	LARGE_INTEGER delay;
+	delay.QuadPart = 10; // times 100 nanoseconds == 1 us
+
+	grst.b.txfflsh = 1;
+	controllerData->CoreGlobalRegs->grstctl = grst.d32;
+	KeMemoryBarrier();
+
+	for (unsigned int i = 0; i < 10000; i++)
+	{
+		KeDelayExecutionThread(KernelMode, FALSE, &delay);
+		KeMemoryBarrier();
+
+		grst.d32 = controllerData->CoreGlobalRegs->grstctl;
+
+		if (!grst.b.txfflsh)
+		{
+			break;
+		}
+	}
+
+	grst.b.rxfflsh = 1;
+	controllerData->CoreGlobalRegs->grstctl = grst.d32;
+	KeMemoryBarrier();
+
+	for (unsigned int i = 0; i < 10000; i++)
+	{
+		KeDelayExecutionThread(KernelMode, FALSE, &delay);
+		KeMemoryBarrier();
+
+		grst.d32 = controllerData->CoreGlobalRegs->grstctl;
+
+		if (!grst.b.rxfflsh)
+		{
+			break;
+		}
+	}
+
+	// UEFI driver inits all channels here
 
 	controllerData->CoreGlobalRegs->gotgint = 0xFFFFFFFF;
 	controllerData->CoreGlobalRegs->gintsts = 0xFFFFFFFF;

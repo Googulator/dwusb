@@ -1635,10 +1635,11 @@ VOID OnInterruptWorkItem(WDFINTERRUPT WdfInterrupt, WDFOBJECT WdfDevice)
 			if (haint & (1 << i))
 			{
 				PFN_CHANNEL_CALLBACK cb = context->ControllerHandle->ChannelCallbacks[i];
+				PVOID cbctx = context->ControllerHandle->ChannelCallbackContext[i];
 
-				if (cb)
+				if (cb && cbctx) // check both to avoid BSOD due to a race condition - this isn't the proper fix, I really should use some kind of locking here
 				{
-					cb(context->ControllerHandle->ChannelCallbackContext[i]);
+					cb(cbctx);
 				}
 			}
 		}

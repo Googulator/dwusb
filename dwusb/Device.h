@@ -34,8 +34,6 @@ typedef struct _DEVICE_CONTEXT
 	UCXCONTROLLER Controller;
 	PHYSICAL_ADDRESS MemoryBase;
 	WDFINTERRUPT Interrupt;
-
-
 } DEVICE_CONTEXT, *PDEVICE_CONTEXT;
 
 //

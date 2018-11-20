@@ -559,7 +559,7 @@ Return Value:
             //
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
 			hprt0.b.prtconndet = 0;
-			hprt0.b.prtena = 0;
+			hprt0.b.prtena = 1;
 			hprt0.b.prtenchng = 0;
 			hprt0.b.prtovrcurrchng = 0;
 			//hprt0.b.prtena = 1;
@@ -595,7 +595,20 @@ Return Value:
             status = STATUS_SUCCESS;
             break;
 
-        case PORT_POWER:
+		case PORT_OVER_CURRENT:
+			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
+			hprt0.b.prtconndet = 0;
+			hprt0.b.prtena = 0;
+			hprt0.b.prtenchng = 0;
+			hprt0.b.prtovrcurrchng = 0;
+			hprt0.b.prtovrcurract = 0;
+			WRITE_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0, (ULONG)hprt0.d32);
+
+			urb->UrbHeader.Status = USBD_STATUS_SUCCESS;
+			status = STATUS_SUCCESS;
+			break;
+
+		case PORT_POWER:
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
 			hprt0.b.prtconndet = 0;
 			hprt0.b.prtena = 0;
@@ -608,6 +621,19 @@ Return Value:
             status = STATUS_SUCCESS;
             break;
 
+		case PORT_RESET:
+			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
+			hprt0.b.prtconndet = 0;
+			hprt0.b.prtena = 0;
+			hprt0.b.prtenchng = 0;
+			hprt0.b.prtovrcurrchng = 0;
+			hprt0.b.prtrst = 0;
+			WRITE_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0, (ULONG)hprt0.d32);
+
+			urb->UrbHeader.Status = USBD_STATUS_SUCCESS;
+			status = STATUS_SUCCESS;
+			break;
+
         case PORT_INDICATOR:
             urb->UrbHeader.Status = USBD_STATUS_SUCCESS;
             status = STATUS_SUCCESS;
@@ -616,6 +642,9 @@ Return Value:
         case C_PORT_CONNECTION:
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
 			hprt0.b.prtconndet = 1;
+			hprt0.b.prtena = 0;
+			hprt0.b.prtenchng = 0;
+			hprt0.b.prtovrcurrchng = 0;
 			WRITE_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0, (ULONG)hprt0.d32);
 
             urb->UrbHeader.Status = USBD_STATUS_SUCCESS;
@@ -631,8 +660,10 @@ Return Value:
 
         case C_PORT_ENABLE:
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
+			hprt0.b.prtconndet = 0;
 			hprt0.b.prtenchng = 1;
 			hprt0.b.prtena = 0; // prtena MUST be 0 to not instantly disable the port
+			hprt0.b.prtovrcurrchng = 0;
 			WRITE_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0, (ULONG)hprt0.d32);
 
             urb->UrbHeader.Status = USBD_STATUS_SUCCESS;
@@ -646,6 +677,9 @@ Return Value:
 
         case C_PORT_OVER_CURRENT:
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
+			hprt0.b.prtconndet = 0;
+			hprt0.b.prtena = 0;
+			hprt0.b.prtenchng = 0;
 			hprt0.b.prtovrcurrchng = 1;
 			WRITE_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0, (ULONG)hprt0.d32);
 
@@ -749,10 +783,10 @@ Return Value:
 
         case PORT_RESET:
 			hprt0.d32 = READ_REGISTER_ULONG((volatile ULONG*)rootHubData->Hprt0);
-			//hprt0.b.prtconndet = 0;
-			//hprt0.b.prtena = 0;
-			//hprt0.b.prtenchng = 0;
-			//hprt0.b.prtovrcurrchng = 0;
+			hprt0.b.prtconndet = 0;
+			hprt0.b.prtena = 0;
+			hprt0.b.prtenchng = 0;
+			hprt0.b.prtovrcurrchng = 0;
 			hprt0.b.prtrst = 1;
 
 			_DataSynchronizationBarrier();
@@ -1202,6 +1236,10 @@ RootHub_ResetComplete(
 	KeMemoryBarrier();
 	_DataSynchronizationBarrier();
 
+	hprt0.b.prtconndet = 0;
+	hprt0.b.prtena = 0;
+	hprt0.b.prtenchng = 0;
+	hprt0.b.prtovrcurrchng = 0;
 	hprt0.b.prtrst = 0;
 
 	KeMemoryBarrier();
@@ -1277,6 +1315,10 @@ RootHub_ResumeComplete(
 
 	hprt0.b.prtsusp = 0;
 	hprt0.b.prtres = 0;
+	hprt0.b.prtconndet = 0;
+	hprt0.b.prtena = 0;
+	hprt0.b.prtenchng = 0;
+	hprt0.b.prtovrcurrchng = 0;
 
 	KeMemoryBarrier();
 	_DataSynchronizationBarrier();
@@ -1373,6 +1415,10 @@ RootHubInit(
 	if (hprt0.b.prtpwr == 0)
 	{
 		hprt0.b.prtpwr = 1;
+		hprt0.b.prtconndet = 0;
+		hprt0.b.prtena = 0;
+		hprt0.b.prtenchng = 0;
+		hprt0.b.prtovrcurrchng = 0;
 
 		KeMemoryBarrier();
 		_DataSynchronizationBarrier();

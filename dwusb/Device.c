@@ -371,8 +371,8 @@ RootHub_UcxEvtInterruptTransfer(
 
 		if (hprt0.b.prtenchng || hprt0.b.prtovrcurrchng || hprt0.b.prtconndet/* || rootHubData->ResetState*/)
 		{
-			// port 1 changed
-			((PUCHAR)transferBuffer)[0] |= 1 << 1;
+			// port 0 changed
+			((PUCHAR)transferBuffer)[0] |= 1 << 0;
 		}
 		
 		status = STATUS_SUCCESS;

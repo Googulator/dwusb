@@ -1294,6 +1294,12 @@ TR_RunTrSm(
 				ULONG sub = hctsiz.b.xfersize;
 				ULONG xfer_len = TrData->TrStateMachine.XferLen;
 
+				// Controller bug: in certain circumstances (device sends too much data?), xfersize can underflow
+				if (sub > xfer_len)
+				{
+					sub = 0;
+				}
+
 				/*if (hcint.b.xfercomp)
 				{*/
 					xfer_len -= sub;
